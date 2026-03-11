@@ -142,6 +142,13 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     setEmailStatus('SENT')
   }
 
+  const changeEmailStatus = async (newStatus: string) => {
+    const body: Record<string, string> = { emailStatus: newStatus }
+    if (newStatus === 'SENT') body.emailSentAt = new Date().toISOString()
+    await fetch(`/api/contacts/${contact.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    setEmailStatus(newStatus)
+  }
+
   const toggleService = async (label: string) => {
     const next = selectedServices.includes(label)
       ? selectedServices.filter(s => s !== label)
@@ -382,7 +389,15 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
             </div>
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <h3 className="text-xs font-semibold text-gray-500 mb-3">メールステータス</h3>
-              <div className={`text-sm font-medium px-3 py-2 rounded-lg ${statusInfo.color}`}>{statusInfo.label}</div>
+              <select
+                value={emailStatus}
+                onChange={e => changeEmailStatus(e.target.value)}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${statusInfo.color}`}
+              >
+                {EMAIL_STATUS.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
               <p className="text-xs text-gray-400 mt-1">タッチ回数: {contact.touchNumber}回</p>
             </div>
           </div>
