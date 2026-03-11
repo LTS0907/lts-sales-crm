@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name         String
+  nameKana     String?
+  company      String?
+  department   String?
+  title        String?
+  email        String?
+  phone        String?
+  lineId       String?
+  gmailAlias   String?
+  website      String?
+  address      String?
+  photoPath    String?
+  cardImageUrl String?
+  episodeMemo  String?
+
+  contactSummary   String?
+  contactSummaryAt DateTime?
+  companySummary   String?
+  companySummaryAt DateTime?
+
+  recommendedServices String?
+  serviceReason       String?
+  emailSubject        String?
+  emailBody           String?
+  emailStatus         String  @default("UNSENT")
+  emailSentAt         DateTime?
+
+  followUpText   String?
+  followUpStatus String  @default("NOT_SET")
+  followUpDate   DateTime?
+
+  salesPhase  String  @default("LEAD")
+  nextAction  String?
+  touchNumber Int     @default(0)
+
+  notes         Note[]
+  exchanges     Exchange[]
+  groupMembers  GroupMember[]
+  meetings      MeetingParticipant[]
+  followUpLogs  FollowUpLog[]
+  servicePhases ServicePhase[]
+}
+
+model ServicePhase {
+  id        String   @id @default(cuid())
+  contactId String
+  service   String
+  phase     String
+  updatedAt DateTime @updatedAt
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, service])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  content   String
+  category  String   @default("GENERAL")
+  contactId String
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model Exchange {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  description String
+  direction   String
+  contactId   String
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model Meeting {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  title        String?
+  date         DateTime
+  location     String?
+  notes        String?
+  participants MeetingParticipant[]
+}
+
+model MeetingParticipant {
+  meetingId String
+  contactId String
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, contactId])
+}
+
+model Group {
+  id          String        @id @default(cuid())
+  createdAt   DateTime      @default(now())
+  name        String
+  description String?
+  type        String        @default("CUSTOM")
+  members     GroupMember[]
+}
+
+model GroupMember {
+  groupId      String
+  contactId    String
+  consentGiven Boolean  @default(false)
+
+  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, contactId])
+}
+
+model FollowUpLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  contactId   String
+  touchNumber Int
+  subject     String?
+  body        String?
+  status      String   @default("DRAFTED")
+  sentAt      DateTime?
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
