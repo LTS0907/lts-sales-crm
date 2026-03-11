@@ -12,10 +12,11 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  name         String
-  nameKana     String?
-  company      String?
-  department   String?
+  name           String
+  nameKana       String?
+  connectionType String?  // PERSONAL(個人) | BUSINESS(会社) | NETWORKING(勉強会) | ONLINE(オンライン) | OTHER
+  company        String?
+  department     String?
   title        String?
   email        String?
   phone        String?

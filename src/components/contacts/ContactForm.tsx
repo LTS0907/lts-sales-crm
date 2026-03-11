@@ -30,6 +30,7 @@ export default function ContactForm({ initialData, mode }: {
     gmailAlias: initialData?.gmailAlias || '',
     website: initialData?.website || '',
     address: initialData?.address || '',
+    connectionType: initialData?.connectionType || '',
     episodeMemo: initialData?.episodeMemo || '',
   })
 
@@ -130,6 +131,33 @@ export default function ContactForm({ initialData, mode }: {
                   onChange={e => setForm(f => ({ ...f, [key as string]: e.target.value }))}
                   className={INPUT} />
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* つながり */}
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">つながり</h3>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {[
+              { value: 'PERSONAL',   label: '👤 個人として' },
+              { value: 'BUSINESS',   label: '🏢 会社として' },
+              { value: 'NETWORKING', label: '🤝 勉強会・セミナー' },
+              { value: 'ONLINE',     label: '💻 オンライン' },
+              { value: 'OTHER',      label: '📌 その他' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, connectionType: f.connectionType === opt.value ? '' : opt.value }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  form.connectionType === opt.value
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                }`}
+              >
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>

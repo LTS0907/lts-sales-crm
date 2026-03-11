@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const data = await request.json()
   const contact = await prisma.contact.create({
-    data: { name: data.name, nameKana: data.nameKana, company: data.company, department: data.department, title: data.title, email: data.email, phone: data.phone, lineId: data.lineId, gmailAlias: data.gmailAlias, website: data.website, address: data.address, episodeMemo: data.episodeMemo },
+    data: { name: data.name, nameKana: data.nameKana, connectionType: data.connectionType || null, company: data.company, department: data.department, title: data.title, email: data.email, phone: data.phone, lineId: data.lineId, gmailAlias: data.gmailAlias, website: data.website, address: data.address, episodeMemo: data.episodeMemo },
   })
   let groupSuggestion = null
   if (contact.company) {
