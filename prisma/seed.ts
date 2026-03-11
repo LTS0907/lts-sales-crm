@@ -1,7 +1,14 @@
 import { PrismaClient } from '@prisma/client'
-import contacts from './seed-data-contacts.json'
-import notes from './seed-data-notes.json'
-import servicePhases from './seed-data-servicePhases.json'
+import fs from 'fs'
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const contacts = JSON.parse(fs.readFileSync(path.join(__dirname, 'seed-data-contacts.json'), 'utf-8'))
+const notes = JSON.parse(fs.readFileSync(path.join(__dirname, 'seed-data-notes.json'), 'utf-8'))
+const servicePhases = JSON.parse(fs.readFileSync(path.join(__dirname, 'seed-data-servicePhases.json'), 'utf-8'))
 
 const prisma = new PrismaClient()
 
