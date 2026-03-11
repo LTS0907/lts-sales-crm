@@ -49,8 +49,8 @@ export default async function ProgressPage({
 
   return (
     <ProgressClient
-      servicePhases={servicePhases}
-      allContacts={allContacts}
+      servicePhases={JSON.parse(JSON.stringify(servicePhases))}
+      allContacts={JSON.parse(JSON.stringify(allContacts))}
       selectedService={service}
     />
   )

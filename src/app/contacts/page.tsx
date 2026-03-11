@@ -45,7 +45,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           </Link>
         </div>
       ) : (
-        <ContactsClient contacts={contacts} />
+        <ContactsClient contacts={JSON.parse(JSON.stringify(contacts))} />
       )}
     </div>
   )
