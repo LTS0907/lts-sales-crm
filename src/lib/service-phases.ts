@@ -174,10 +174,19 @@ const SERVICE_SPECIFIC: Record<string, PhaseStep[]> = {
   ],
 }
 
-/** サービス名 → 全フェーズ（共通＋サービス別）を返す */
+/** 全サービス共通の最終フェーズ */
+const COMMON_END_PHASES: PhaseStep[] = [
+  {
+    key: 'COMPLETED',
+    label: 'サービス終了',
+    description: 'サービスが完了・終了した',
+  },
+]
+
+/** サービス名 → 全フェーズ（共通＋サービス別＋終了）を返す */
 export function getPhasesForService(serviceName: string): PhaseStep[] {
   const specific = SERVICE_SPECIFIC[serviceName] || SERVICE_SPECIFIC['その他']
-  return [...COMMON_PHASES, ...specific]
+  return [...COMMON_PHASES, ...specific, ...COMMON_END_PHASES]
 }
 
 /** フェーズキー → インデックス（0始まり）を返す。見つからない場合は -1 */
