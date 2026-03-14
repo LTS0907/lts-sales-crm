@@ -1,77 +1,57 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from 'date-fns'
+import { useSession, signIn, signOut } from 'next-auth/react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
-interface Participant {
-  contactId: string
-  contact: { id: string; name: string; photoPath: string | null }
-}
-
-interface Meeting {
+interface GoogleEvent {
   id: string
-  title: string | null
-  date: string
-  location: string | null
-  notes: string | null
-  participants: Participant[]
+  title: string
+  start: string
+  end: string
+  location?: string
+  description?: string
+  htmlLink?: string
+  allDay: boolean
 }
 
 export default function CalendarPage() {
+  const { data: session, status } = useSession()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [events, setEvents] = useState<GoogleEvent[]>([])
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [showAddMeeting, setShowAddMeeting] = useState(false)
-  const [contacts, setContacts] = useState<{ id: string; name: string }[]>([])
-  const [newMeeting, setNewMeeting] = useState({
-    title: '',
-    location: '',
-    notes: '',
-    contactIds: [] as string[],
-  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchMeetings()
-    fetchContacts()
-  }, [currentDate])
+    if (session?.accessToken) {
+      fetchEvents()
+    }
+  }, [currentDate, session])
 
-  const fetchMeetings = async () => {
-    const year = currentDate.getFullYear()
-    const month = currentDate.getMonth() + 1
-    const res = await fetch(`/api/meetings?year=${year}&month=${month}`)
-    const data = await res.json()
-    setMeetings(data)
-  }
+  const fetchEvents = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const monthStart = startOfMonth(currentDate)
+      const monthEnd = endOfMonth(currentDate)
 
-  const fetchContacts = async () => {
-    const res = await fetch('/api/contacts')
-    const data = await res.json()
-    setContacts(data)
-  }
+      const res = await fetch(
+        `/api/google-calendar?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}`
+      )
 
-  const addMeeting = async () => {
-    if (!selectedDate) return
-    const dateStr = new Date(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate(),
-      12, 0, 0
-    ).toISOString()
+      if (!res.ok) {
+        throw new Error('カレンダーの取得に失敗しました')
+      }
 
-    await fetch('/api/meetings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...newMeeting,
-        date: dateStr,
-      }),
-    })
-
-    setNewMeeting({ title: '', location: '', notes: '', contactIds: [] })
-    setShowAddMeeting(false)
-    fetchMeetings()
+      const data = await res.json()
+      setEvents(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エラーが発生しました')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const days = eachDayOfInterval({
@@ -89,24 +69,73 @@ export default function CalendarPage() {
     setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))
   }
 
-  const getMeetingsForDay = (day: Date) =>
-    meetings.filter(m => isSameDay(new Date(m.date), day))
+  const getEventsForDay = (day: Date) =>
+    events.filter(e => {
+      const eventDate = parseISO(e.start)
+      return isSameDay(eventDate, day)
+    })
 
-  const selectedDayMeetings = selectedDate ? getMeetingsForDay(selectedDate) : []
+  const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate) : []
+
+  // 未ログイン状態
+  if (status === 'loading') {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="p-8">
+        <div className="max-w-md mx-auto bg-white rounded-2xl border border-gray-200 p-8 text-center">
+          <div className="text-6xl mb-4">📅</div>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Googleカレンダーと連携</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            Googleアカウントでログインすると、あなたのGoogleカレンダーの予定が表示されます。
+          </p>
+          <button
+            onClick={() => signIn('google')}
+            className="inline-flex items-center gap-3 px-6 py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Googleでログイン
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">カレンダー</h1>
-        {selectedDate && (
-          <button
-            onClick={() => setShowAddMeeting(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-          >
-            + 予定を追加
-          </button>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Googleカレンダー</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {session.user?.email} でログイン中
+          </p>
+        </div>
+        <button
+          onClick={() => signOut()}
+          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          ログアウト
+        </button>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          {error}
+          <button onClick={fetchEvents} className="ml-2 underline">再試行</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Calendar Grid */}
@@ -120,56 +149,68 @@ export default function CalendarPage() {
           </div>
 
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {['日', '月', '火', '水', '木', '金', '土'].map(day => (
-              <div key={day} className="text-center text-xs font-medium text-gray-400 py-1">
+            {['日', '月', '火', '水', '木', '金', '土'].map((day, i) => (
+              <div key={day} className={`text-center text-xs font-medium py-1 ${
+                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400'
+              }`}>
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: startDayOfWeek }).map((_, i) => (
-              <div key={`empty-${i}`} />
-            ))}
-            {days.map(day => {
-              const dayMeetings = getMeetingsForDay(day)
-              const isSelected = selectedDate && isSameDay(day, selectedDate)
-              const isToday = isSameDay(day, new Date())
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-gray-400">読み込み中...</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: startDayOfWeek }).map((_, i) => (
+                <div key={`empty-${i}`} />
+              ))}
+              {days.map(day => {
+                const dayEvents = getEventsForDay(day)
+                const isSelected = selectedDate && isSameDay(day, selectedDate)
+                const isToday = isSameDay(day, new Date())
+                const dayOfWeek = getDay(day)
 
-              return (
-                <button
-                  key={day.toISOString()}
-                  onClick={() => setSelectedDate(day)}
-                  className={`min-h-[60px] p-1 rounded-lg text-left transition-colors ${
-                    isSelected
-                      ? 'bg-blue-600 text-white'
-                      : isToday
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <span className="text-sm font-medium block mb-1">
-                    {format(day, 'd')}
-                  </span>
-                  {dayMeetings.slice(0, 2).map(m => (
-                    <div
-                      key={m.id}
-                      className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 ${
-                        isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700'
-                      }`}
-                    >
-                      {m.participants[0]?.contact.name || m.title || '予定'}
-                    </div>
-                  ))}
-                  {dayMeetings.length > 2 && (
-                    <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
-                      +{dayMeetings.length - 2}件
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => setSelectedDate(day)}
+                    className={`min-h-[70px] p-1 rounded-lg text-left transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 text-white'
+                        : isToday
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className={`text-sm font-medium block mb-1 ${
+                      !isSelected && (dayOfWeek === 0 ? 'text-red-500' : dayOfWeek === 6 ? 'text-blue-500' : 'text-gray-700')
+                    }`}>
+                      {format(day, 'd')}
+                    </span>
+                    {dayEvents.slice(0, 2).map(e => (
+                      <div
+                        key={e.id}
+                        className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 ${
+                          isSelected ? 'bg-blue-500 text-white' : 'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {e.allDay ? '' : format(parseISO(e.start), 'HH:mm') + ' '}
+                        {e.title}
+                      </div>
+                    ))}
+                    {dayEvents.length > 2 && (
+                      <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                        +{dayEvents.length - 2}件
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Day Detail Panel */}
@@ -179,39 +220,48 @@ export default function CalendarPage() {
               <h3 className="font-semibold text-gray-900 mb-4">
                 {format(selectedDate, 'M月d日（E）', { locale: ja })}
               </h3>
-              {selectedDayMeetings.length === 0 ? (
+              {selectedDayEvents.length === 0 ? (
                 <p className="text-sm text-gray-400">この日の予定はありません</p>
               ) : (
                 <div className="space-y-3">
-                  {selectedDayMeetings.map(meeting => (
-                    <div key={meeting.id} className="border border-gray-100 rounded-lg p-3">
-                      {meeting.title && (
-                        <p className="text-sm font-medium text-gray-900 mb-2">{meeting.title}</p>
-                      )}
-                      {meeting.location && (
-                        <p className="text-xs text-gray-500 mb-2">📍 {meeting.location}</p>
-                      )}
-                      <div className="flex flex-wrap gap-1">
-                        {meeting.participants.map(p => (
-                          <Link
-                            key={p.contactId}
-                            href={`/contacts/${p.contactId}`}
-                            className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100"
-                          >
-                            {p.contact.name}
-                          </Link>
-                        ))}
+                  {selectedDayEvents.map(event => (
+                    <a
+                      key={event.id}
+                      href={event.htmlLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="w-1 h-full bg-green-500 rounded-full flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 mb-1">{event.title}</p>
+                          {!event.allDay && (
+                            <p className="text-xs text-gray-500 mb-1">
+                              {format(parseISO(event.start), 'HH:mm')} - {format(parseISO(event.end), 'HH:mm')}
+                            </p>
+                          )}
+                          {event.allDay && (
+                            <p className="text-xs text-gray-500 mb-1">終日</p>
+                          )}
+                          {event.location && (
+                            <p className="text-xs text-gray-500 truncate">📍 {event.location}</p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400">↗</span>
                       </div>
-                    </div>
+                    </a>
                   ))}
                 </div>
               )}
-              <button
-                onClick={() => setShowAddMeeting(true)}
-                className="mt-4 w-full py-2 border-2 border-dashed border-gray-200 text-sm text-gray-400 rounded-lg hover:border-blue-300 hover:text-blue-500 transition-colors"
+              <a
+                href={`https://calendar.google.com/calendar/r/day/${format(selectedDate, 'yyyy/MM/dd')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 flex items-center justify-center gap-2 w-full py-2 border-2 border-dashed border-gray-200 text-sm text-gray-400 rounded-lg hover:border-green-300 hover:text-green-500 transition-colors"
               >
-                + 予定を追加
-              </button>
+                <span>+ Googleカレンダーで予定を追加</span>
+              </a>
             </>
           ) : (
             <p className="text-sm text-gray-400 text-center py-8">
@@ -220,76 +270,6 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
-
-      {/* Add Meeting Modal */}
-      {showAddMeeting && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
-            <h3 className="font-bold text-gray-900 mb-4">
-              予定を追加 ({selectedDate && format(selectedDate, 'M月d日', { locale: ja })})
-            </h3>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="タイトル（任意）"
-                value={newMeeting.title}
-                onChange={e => setNewMeeting(m => ({ ...m, title: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="text"
-                placeholder="場所（任意）"
-                value={newMeeting.location}
-                onChange={e => setNewMeeting(m => ({ ...m, location: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">参加者</label>
-                <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2">
-                  {contacts.map(c => (
-                    <label key={c.id} className="flex items-center gap-2 py-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newMeeting.contactIds.includes(c.id)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setNewMeeting(m => ({ ...m, contactIds: [...m.contactIds, c.id] }))
-                          } else {
-                            setNewMeeting(m => ({ ...m, contactIds: m.contactIds.filter(id => id !== c.id) }))
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-sm text-gray-700">{c.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <textarea
-                placeholder="メモ（任意）"
-                value={newMeeting.notes}
-                onChange={e => setNewMeeting(m => ({ ...m, notes: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                rows={2}
-              />
-            </div>
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={addMeeting}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-              >
-                追加
-              </button>
-              <button
-                onClick={() => setShowAddMeeting(false)}
-                className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
