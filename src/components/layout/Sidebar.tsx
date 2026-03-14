@@ -24,11 +24,22 @@ export default function Sidebar() {
   const pathname = usePathname()
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-      <div className="p-4 border-b border-gray-200">
+      <Link href="/" className="block p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors">
         <h1 className="text-base font-bold text-gray-900">名刺管理 + CRM</h1>
         <p className="text-xs text-gray-400 mt-0.5">営業支援システム</p>
-      </div>
+      </Link>
       <nav className="flex-1 p-3 overflow-y-auto">
+        {/* トップページへのリンク */}
+        <div className="mb-4">
+          <Link href="/"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+              pathname === '/'
+                ? 'bg-red-50 text-red-700 border border-red-200'
+                : 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-700'
+            }`}>
+            <span>🏠</span>トップページ
+          </Link>
+        </div>
         {nav.map(section => (
           <div key={section.section} className="mb-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">{section.section}</p>
