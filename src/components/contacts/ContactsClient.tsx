@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   UNSENT:  { label: '未送信', color: 'bg-gray-100 text-gray-600' },
@@ -82,6 +82,8 @@ function groupIcon(mode: GroupMode, key: string): string {
   return SERVICE_COLORS[key] ? '✦' : '📂'
 }
 
+const SCROLL_KEY = 'contacts-scroll-position'
+
 export default function ContactsClient({ contacts }: { contacts: any[] }) {
   const [mode, setMode] = useState<GroupMode>('company')
 
@@ -93,6 +95,27 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
     { key: 'service',    label: 'サービス別' },
     { key: 'connection', label: 'つながり別' },
   ]
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    const savedPosition = sessionStorage.getItem(SCROLL_KEY)
+    if (savedPosition) {
+      const pos = parseInt(savedPosition, 10)
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        window.scrollTo(0, pos)
+      })
+    }
+  }, [])
+
+  // Save scroll position before leaving
+  useEffect(() => {
+    const handleScroll = () => {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY))
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   return (
     <>
