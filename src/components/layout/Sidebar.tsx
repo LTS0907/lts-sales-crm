@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession, signOut } from 'next-auth/react'
 
 const nav = [
   { section: '名刺管理', items: [
@@ -23,6 +24,8 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const { data: session } = useSession()
+
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
       <Link href="/" className="block p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors">
@@ -57,11 +60,24 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="p-3 border-t border-gray-200">
+      <div className="p-3 border-t border-gray-200 space-y-2">
         <Link href="/contacts/new"
           className="flex items-center justify-center gap-1 w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
           + 名刺を追加
         </Link>
+        {session && (
+          <div className="pt-2 border-t border-gray-100">
+            <div className="text-xs text-gray-500 truncate mb-1 px-1">
+              {session.user?.email}
+            </div>
+            <button
+              onClick={() => signOut()}
+              className="flex items-center justify-center gap-1 w-full px-3 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              ログアウト
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   )
