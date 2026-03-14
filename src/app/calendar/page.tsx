@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import {
   format,
@@ -9,7 +9,6 @@ import {
   startOfWeek,
   endOfWeek,
   eachDayOfInterval,
-  eachHourOfInterval,
   getDay,
   isSameDay,
   parseISO,
@@ -21,8 +20,9 @@ import {
   subMonths,
   startOfDay,
   endOfDay,
-  isWithinInterval,
+  differenceInMinutes,
   setHours,
+  setMinutes,
 } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
@@ -39,6 +39,156 @@ interface GoogleEvent {
 
 type ViewMode = 'month' | 'week' | 'day'
 
+// Event Edit Modal Component
+function EventEditModal({
+  event,
+  onClose,
+  onSave,
+  saving,
+}: {
+  event: GoogleEvent
+  onClose: () => void
+  onSave: (data: Partial<GoogleEvent>) => void
+  saving: boolean
+}) {
+  const [title, setTitle] = useState(event.title)
+  const [startDate, setStartDate] = useState(
+    event.allDay ? event.start : format(parseISO(event.start), "yyyy-MM-dd'T'HH:mm")
+  )
+  const [endDate, setEndDate] = useState(
+    event.allDay ? event.end : format(parseISO(event.end), "yyyy-MM-dd'T'HH:mm")
+  )
+  const [location, setLocation] = useState(event.location || '')
+  const [description, setDescription] = useState(event.description || '')
+  const [allDay, setAllDay] = useState(event.allDay)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSave({
+      id: event.id,
+      title,
+      start: allDay ? startDate : startDate,
+      end: allDay ? endDate : endDate,
+      location,
+      description,
+      allDay,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-lg font-bold text-gray-900">予定を編集</h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+          >
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              タイトル
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="allDay"
+              checked={allDay}
+              onChange={e => setAllDay(e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded"
+            />
+            <label htmlFor="allDay" className="text-sm text-gray-700">
+              終日
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                開始
+              </label>
+              <input
+                type={allDay ? 'date' : 'datetime-local'}
+                value={allDay ? startDate.split('T')[0] : startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                終了
+              </label>
+              <input
+                type={allDay ? 'date' : 'datetime-local'}
+                value={allDay ? endDate.split('T')[0] : endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              場所
+            </label>
+            <input
+              type="text"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="場所を追加"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              説明
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="説明を追加"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function CalendarPage() {
   const { data: session, status } = useSession()
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -46,15 +196,13 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('month')
+  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [editingEvent, setEditingEvent] = useState<GoogleEvent | null>(null)
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (session?.accessToken) {
-      fetchEvents()
-    }
-  }, [currentDate, session, viewMode])
+  const fetchEvents = useCallback(async () => {
+    if (!session?.accessToken) return
 
-  const fetchEvents = async () => {
     setLoading(true)
     setError(null)
     try {
@@ -87,6 +235,42 @@ export default function CalendarPage() {
     } finally {
       setLoading(false)
     }
+  }, [session?.accessToken, currentDate, viewMode])
+
+  useEffect(() => {
+    if (session?.accessToken) {
+      fetchEvents()
+    }
+  }, [fetchEvents, session?.accessToken])
+
+  const handleSaveEvent = async (data: Partial<GoogleEvent>) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/google-calendar', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: data.id,
+          title: data.title,
+          start: data.start,
+          end: data.end,
+          location: data.location,
+          description: data.description,
+          allDay: data.allDay,
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error('予定の更新に失敗しました')
+      }
+
+      setEditingEvent(null)
+      await fetchEvents()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'エラーが発生しました')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const navigatePrev = () => {
@@ -109,19 +293,6 @@ export default function CalendarPage() {
       return isSameDay(eventDate, day)
     })
 
-  const getEventsForHour = (day: Date, hour: number) =>
-    events.filter(e => {
-      if (e.allDay) return false
-      const eventStart = parseISO(e.start)
-      const eventEnd = parseISO(e.end)
-      const hourStart = setHours(startOfDay(day), hour)
-      const hourEnd = setHours(startOfDay(day), hour + 1)
-      return (
-        isWithinInterval(hourStart, { start: eventStart, end: eventEnd }) ||
-        isWithinInterval(eventStart, { start: hourStart, end: hourEnd })
-      )
-    })
-
   const getAllDayEvents = (day: Date) =>
     events.filter(e => {
       if (!e.allDay) return false
@@ -129,7 +300,16 @@ export default function CalendarPage() {
       return isSameDay(eventDate, day)
     })
 
-  // 未ログイン状態
+  const getTimedEventsForDay = (day: Date) =>
+    events.filter(e => {
+      if (e.allDay) return false
+      const eventStart = parseISO(e.start)
+      const eventEnd = parseISO(e.end)
+      const dayStart = startOfDay(day)
+      const dayEnd = endOfDay(day)
+      return eventStart < dayEnd && eventEnd > dayStart
+    })
+
   if (status === 'loading') {
     return (
       <div className="p-8 flex items-center justify-center min-h-[400px]">
@@ -244,7 +424,6 @@ export default function CalendarPage() {
         </div>
       ) : (
         <>
-          {/* Month View */}
           {viewMode === 'month' && (
             <MonthView
               currentDate={currentDate}
@@ -252,43 +431,72 @@ export default function CalendarPage() {
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               getEventsForDay={getEventsForDay}
+              onEditEvent={setEditingEvent}
             />
           )}
 
-          {/* Week View */}
           {viewMode === 'week' && (
             <WeekView
               weekDays={weekDays}
               hours={hours}
-              events={events}
-              getEventsForHour={getEventsForHour}
               getAllDayEvents={getAllDayEvents}
+              getTimedEventsForDay={getTimedEventsForDay}
+              onEditEvent={setEditingEvent}
             />
           )}
 
-          {/* Day View */}
           {viewMode === 'day' && (
             <DayView
               currentDate={currentDate}
               hours={hours}
-              events={events}
-              getEventsForHour={getEventsForHour}
               getAllDayEvents={getAllDayEvents}
+              getTimedEventsForDay={getTimedEventsForDay}
+              onEditEvent={setEditingEvent}
             />
           )}
         </>
+      )}
+
+      {editingEvent && (
+        <EventEditModal
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSave={handleSaveEvent}
+          saving={saving}
+        />
       )}
     </div>
   )
 }
 
+// Calculate event position and height
+function calculateEventStyle(event: GoogleEvent, dayStart: Date): { top: number; height: number } {
+  const eventStart = parseISO(event.start)
+  const eventEnd = parseISO(event.end)
+
+  const dayStartTime = startOfDay(dayStart)
+  const effectiveStart = eventStart < dayStartTime ? dayStartTime : eventStart
+  const dayEndTime = endOfDay(dayStart)
+  const effectiveEnd = eventEnd > dayEndTime ? dayEndTime : eventEnd
+
+  const startMinutes = differenceInMinutes(effectiveStart, dayStartTime)
+  const durationMinutes = differenceInMinutes(effectiveEnd, effectiveStart)
+
+  const hourHeight = 48 // pixels per hour
+  const top = (startMinutes / 60) * hourHeight
+  const height = Math.max((durationMinutes / 60) * hourHeight, 20) // minimum 20px
+
+  return { top, height }
+}
+
 // Month View Component
-function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEventsForDay }: {
+function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEventsForDay, onEditEvent }: {
   currentDate: Date
   events: GoogleEvent[]
   selectedDate: Date | null
   setSelectedDate: (d: Date | null) => void
   getEventsForDay: (d: Date) => GoogleEvent[]
+  onEditEvent: (e: GoogleEvent) => void
 }) {
   const days = eachDayOfInterval({
     start: startOfMonth(currentDate),
@@ -337,8 +545,9 @@ function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEven
               {dayEvents.slice(0, 3).map(e => (
                 <div
                   key={e.id}
-                  className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 ${
-                    isSelected ? 'bg-blue-500 text-white' : 'bg-green-100 text-green-700'
+                  onClick={(ev) => { ev.stopPropagation(); onEditEvent(e) }}
+                  className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 cursor-pointer ${
+                    isSelected ? 'bg-blue-500 text-white hover:bg-blue-400' : 'bg-green-100 text-green-700 hover:bg-green-200'
                   }`}
                 >
                   {e.allDay ? '' : format(parseISO(e.start), 'HH:mm') + ' '}
@@ -359,12 +568,12 @@ function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEven
 }
 
 // Week View Component
-function WeekView({ weekDays, hours, events, getEventsForHour, getAllDayEvents }: {
+function WeekView({ weekDays, hours, getAllDayEvents, getTimedEventsForDay, onEditEvent }: {
   weekDays: Date[]
   hours: number[]
-  events: GoogleEvent[]
-  getEventsForHour: (d: Date, h: number) => GoogleEvent[]
   getAllDayEvents: (d: Date) => GoogleEvent[]
+  getTimedEventsForDay: (d: Date) => GoogleEvent[]
+  onEditEvent: (e: GoogleEvent) => void
 }) {
   return (
     <div className="flex-1 bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
@@ -398,15 +607,13 @@ function WeekView({ weekDays, hours, events, getEventsForHour, getAllDayEvents }
           return (
             <div key={day.toISOString()} className="flex-1 border-l border-gray-100 p-1 min-h-[30px]">
               {allDayEvents.map(e => (
-                <a
+                <button
                   key={e.id}
-                  href={e.htmlLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-xs bg-green-100 text-green-700 rounded px-1 py-0.5 truncate hover:bg-green-200"
+                  onClick={() => onEditEvent(e)}
+                  className="block w-full text-left text-xs bg-green-100 text-green-700 rounded px-1 py-0.5 truncate hover:bg-green-200"
                 >
                   {e.title}
-                </a>
+                </button>
               ))}
             </div>
           )
@@ -416,37 +623,58 @@ function WeekView({ weekDays, hours, events, getEventsForHour, getAllDayEvents }
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
         <div className="relative">
+          {/* Hour lines */}
           {hours.map(hour => (
             <div key={hour} className="flex h-12 border-b border-gray-100">
               <div className="w-16 flex-shrink-0 text-xs text-gray-400 text-right pr-2 -mt-2">
                 {hour.toString().padStart(2, '0')}:00
               </div>
-              {weekDays.map(day => {
-                const hourEvents = getEventsForHour(day, hour)
-                return (
-                  <div
-                    key={day.toISOString()}
-                    className={`flex-1 border-l border-gray-100 relative ${
-                      isSameDay(day, new Date()) ? 'bg-blue-50/30' : ''
-                    }`}
-                  >
-                    {hourEvents.map(e => (
-                      <a
-                        key={e.id}
-                        href={e.htmlLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute inset-x-0 mx-0.5 text-xs bg-green-500 text-white rounded px-1 py-0.5 truncate hover:bg-green-600 z-10"
-                        style={{ top: 0 }}
-                      >
-                        {format(parseISO(e.start), 'HH:mm')} {e.title}
-                      </a>
-                    ))}
-                  </div>
-                )
-              })}
+              {weekDays.map(day => (
+                <div
+                  key={day.toISOString()}
+                  className={`flex-1 border-l border-gray-100 ${
+                    isSameDay(day, new Date()) ? 'bg-blue-50/30' : ''
+                  }`}
+                />
+              ))}
             </div>
           ))}
+
+          {/* Events overlay */}
+          <div className="absolute inset-0 flex pointer-events-none">
+            <div className="w-16 flex-shrink-0" />
+            {weekDays.map(day => {
+              const timedEvents = getTimedEventsForDay(day)
+              return (
+                <div key={day.toISOString()} className="flex-1 relative border-l border-transparent">
+                  {timedEvents.map((e, idx) => {
+                    const { top, height } = calculateEventStyle(e, day)
+                    return (
+                      <button
+                        key={e.id}
+                        onClick={() => onEditEvent(e)}
+                        className="absolute left-0.5 right-0.5 text-xs bg-green-500 text-white rounded px-1 py-0.5 overflow-hidden hover:bg-green-600 pointer-events-auto cursor-pointer shadow-sm"
+                        style={{
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          zIndex: 10 + idx,
+                        }}
+                      >
+                        <div className="font-medium truncate">
+                          {format(parseISO(e.start), 'HH:mm')} {e.title}
+                        </div>
+                        {height > 30 && (
+                          <div className="text-green-100 truncate text-[10px]">
+                            {format(parseISO(e.start), 'HH:mm')} - {format(parseISO(e.end), 'HH:mm')}
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -454,14 +682,15 @@ function WeekView({ weekDays, hours, events, getEventsForHour, getAllDayEvents }
 }
 
 // Day View Component
-function DayView({ currentDate, hours, events, getEventsForHour, getAllDayEvents }: {
+function DayView({ currentDate, hours, getAllDayEvents, getTimedEventsForDay, onEditEvent }: {
   currentDate: Date
   hours: number[]
-  events: GoogleEvent[]
-  getEventsForHour: (d: Date, h: number) => GoogleEvent[]
   getAllDayEvents: (d: Date) => GoogleEvent[]
+  getTimedEventsForDay: (d: Date) => GoogleEvent[]
+  onEditEvent: (e: GoogleEvent) => void
 }) {
   const allDayEvents = getAllDayEvents(currentDate)
+  const timedEvents = getTimedEventsForDay(currentDate)
 
   return (
     <div className="flex-1 bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
@@ -471,15 +700,13 @@ function DayView({ currentDate, hours, events, getEventsForHour, getAllDayEvents
           <div className="w-16 flex-shrink-0 text-xs text-gray-400">終日</div>
           <div className="flex-1 flex flex-wrap gap-1">
             {allDayEvents.map(e => (
-              <a
+              <button
                 key={e.id}
-                href={e.htmlLink}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => onEditEvent(e)}
                 className="text-xs bg-green-100 text-green-700 rounded px-2 py-1 hover:bg-green-200"
               >
                 {e.title}
-              </a>
+              </button>
             ))}
           </div>
         </div>
@@ -487,31 +714,50 @@ function DayView({ currentDate, hours, events, getEventsForHour, getAllDayEvents
 
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
-        {hours.map(hour => {
-          const hourEvents = getEventsForHour(currentDate, hour)
-          return (
-            <div key={hour} className="flex h-16 border-b border-gray-100">
-              <div className="w-16 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-1">
+        <div className="relative">
+          {/* Hour lines */}
+          {hours.map(hour => (
+            <div key={hour} className="flex h-12 border-b border-gray-100">
+              <div className="w-16 flex-shrink-0 text-xs text-gray-400 text-right pr-2 -mt-2">
                 {hour.toString().padStart(2, '0')}:00
               </div>
-              <div className="flex-1 border-l border-gray-100 relative">
-                {hourEvents.map(e => (
-                  <a
-                    key={e.id}
-                    href={e.htmlLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="absolute left-1 right-1 top-1 text-sm bg-green-500 text-white rounded px-2 py-1 hover:bg-green-600"
-                  >
-                    <span className="font-medium">{format(parseISO(e.start), 'HH:mm')} - {format(parseISO(e.end), 'HH:mm')}</span>
-                    <span className="ml-2">{e.title}</span>
-                    {e.location && <span className="ml-2 text-green-100">📍 {e.location}</span>}
-                  </a>
-                ))}
-              </div>
+              <div className="flex-1 border-l border-gray-100" />
             </div>
-          )
-        })}
+          ))}
+
+          {/* Events overlay */}
+          <div className="absolute inset-0 flex pointer-events-none">
+            <div className="w-16 flex-shrink-0" />
+            <div className="flex-1 relative">
+              {timedEvents.map((e, idx) => {
+                const { top, height } = calculateEventStyle(e, currentDate)
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => onEditEvent(e)}
+                    className="absolute left-1 right-1 text-sm bg-green-500 text-white rounded px-2 py-1 overflow-hidden hover:bg-green-600 pointer-events-auto cursor-pointer shadow-sm"
+                    style={{
+                      top: `${top}px`,
+                      height: `${height}px`,
+                      zIndex: 10 + idx,
+                    }}
+                  >
+                    <div className="font-medium">
+                      {format(parseISO(e.start), 'HH:mm')} - {format(parseISO(e.end), 'HH:mm')}
+                      <span className="ml-2">{e.title}</span>
+                    </div>
+                    {height > 40 && e.location && (
+                      <div className="text-green-100 text-xs mt-1">📍 {e.location}</div>
+                    )}
+                    {height > 60 && e.description && (
+                      <div className="text-green-100 text-xs mt-1 line-clamp-2">{e.description}</div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

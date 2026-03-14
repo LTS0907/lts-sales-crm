@@ -47,3 +47,73 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to fetch calendar events' }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+
+  try {
+    const body = await request.json()
+    const { eventId, title, start, end, location, description, allDay } = body
+
+    if (!eventId) {
+      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 })
+    }
+
+    const oauth2Client = new google.auth.OAuth2()
+    oauth2Client.setCredentials({ access_token: session.accessToken })
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
+
+    const eventUpdate: {
+      summary?: string
+      location?: string
+      description?: string
+      start?: { dateTime?: string; date?: string; timeZone?: string }
+      end?: { dateTime?: string; date?: string; timeZone?: string }
+    } = {}
+
+    if (title !== undefined) eventUpdate.summary = title
+    if (location !== undefined) eventUpdate.location = location
+    if (description !== undefined) eventUpdate.description = description
+
+    if (start) {
+      if (allDay) {
+        eventUpdate.start = { date: start.split('T')[0] }
+      } else {
+        eventUpdate.start = { dateTime: start, timeZone: 'Asia/Tokyo' }
+      }
+    }
+
+    if (end) {
+      if (allDay) {
+        eventUpdate.end = { date: end.split('T')[0] }
+      } else {
+        eventUpdate.end = { dateTime: end, timeZone: 'Asia/Tokyo' }
+      }
+    }
+
+    const response = await calendar.events.patch({
+      calendarId: 'primary',
+      eventId: eventId,
+      requestBody: eventUpdate,
+    })
+
+    return NextResponse.json({
+      id: response.data.id,
+      title: response.data.summary || '(タイトルなし)',
+      start: response.data.start?.dateTime || response.data.start?.date,
+      end: response.data.end?.dateTime || response.data.end?.date,
+      location: response.data.location,
+      description: response.data.description,
+      htmlLink: response.data.htmlLink,
+      allDay: !response.data.start?.dateTime,
+    })
+  } catch (error) {
+    console.error('Google Calendar API error:', error)
+    return NextResponse.json({ error: 'Failed to update event' }, { status: 500 })
+  }
+}
