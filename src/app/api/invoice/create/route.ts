@@ -64,9 +64,10 @@ export async function POST(request: Request) {
     const dateStr = issueDate || `${today.getFullYear()}.${today.getMonth() + 1}.${today.getDate()}`
     const documentTitle = `${companyName}様${typeLabel}（${dateStr}）`
 
-    // Copy the template
+    // Copy the template (supports shared drives)
     const copyResponse = await drive.files.copy({
       fileId: TEMPLATE_SPREADSHEET_ID,
+      supportsAllDrives: true,
       requestBody: {
         name: documentTitle,
       },
