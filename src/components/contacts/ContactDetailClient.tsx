@@ -1,9 +1,23 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { parseRelationships } from '@/lib/relationship-parser'
 import ServiceProgressStepper from '@/components/crm/ServiceProgressStepper'
+
+interface GmailMessage {
+  id: string
+  threadId: string
+  subject: string
+  from: string
+  fromEmail: string
+  to: string
+  toEmail: string
+  date: string
+  snippet: string
+  isIncoming: boolean
+}
 
 const NOTE_CATS = [
   { value: 'GENERAL', label: '一般', color: 'bg-gray-50 text-gray-600' },
@@ -56,7 +70,11 @@ function NoteText({ text, contacts }: { text: string; contacts: { id: string; na
 
 export default function ContactDetailClient({ contact, allContacts }: { contact: any; allContacts: { id: string; name: string }[] }) {
   const router = useRouter()
+  const { data: session } = useSession()
   const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'>('notes')
+  const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([])
+  const [gmailLoading, setGmailLoading] = useState(false)
+  const [gmailError, setGmailError] = useState<string | null>(null)
   const [notes, setNotes] = useState(contact.notes)
   const [exchanges, setExchanges] = useState(contact.exchanges)
   const [photoPath, setPhotoPath] = useState(contact.photoPath)
@@ -191,7 +209,47 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     await fetch(`/api/contacts/${contact.id}`, { method: 'DELETE' }); router.push('/contacts')
   }
 
+  const fetchGmailHistory = async () => {
+    if (!contact.email) return
+    setGmailLoading(true)
+    setGmailError(null)
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/gmail?maxResults=30`)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'メール取得に失敗しました')
+      }
+      const data = await res.json()
+      setGmailMessages(data.emails || [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'エラーが発生しました'
+      if (message.includes('insufficient') || message.includes('Insufficient Permission')) {
+        setGmailError('Gmail権限エラー: ログアウトして再ログインしてください')
+      } else {
+        setGmailError(message)
+      }
+    } finally {
+      setGmailLoading(false)
+    }
+  }
+
+  // Fetch Gmail when exchanges tab is opened and user has email
+  useEffect(() => {
+    if (tab === 'exchanges' && session?.accessToken && contact.email && gmailMessages.length === 0 && !gmailLoading) {
+      fetchGmailHistory()
+    }
+  }, [tab, session?.accessToken, contact.email])
+
   const statusInfo = EMAIL_STATUS.find(s => s.value === emailStatus) || EMAIL_STATUS[0]
+
+  const formatGmailDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr)
+      return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return dateStr
+    }
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -311,41 +369,112 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
 
       {/* Exchanges Tab */}
       {tab === 'exchanges' && (
-        <div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex gap-2 mb-3">
-              {[['THEY_DID_FOR_ME','相手がしてくれたこと','bg-green-600'],['I_DID_FOR_THEM','自分がしたこと','bg-orange-600']].map(([val, label, bg]) => (
-                <button key={val} onClick={() => setExchDir(val)}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${exchDir === val ? `${bg} text-white border-transparent` : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {label}
+        <div className="space-y-6">
+          {/* Gmail History Section */}
+          {contact.email && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📧</span>
+                  <h3 className="font-semibold text-gray-900">メール履歴</h3>
+                  <span className="text-xs text-gray-500">(@{contact.email?.split('@')[1]})</span>
+                </div>
+                <button
+                  onClick={fetchGmailHistory}
+                  disabled={gmailLoading}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {gmailLoading ? '取得中...' : '更新'}
                 </button>
-              ))}
-            </div>
-            <input type="text" value={newExchange} onChange={e => setNewExchange(e.target.value)} placeholder="内容を入力..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onKeyDown={e => e.key === 'Enter' && addExchange()} />
-            <div className="flex justify-end mt-2"><button onClick={addExchange} disabled={!newExchange.trim()} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50">追加</button></div>
-          </div>
-          <div className="space-y-4">
-            {['THEY_DID_FOR_ME','I_DID_FOR_THEM'].map(dir => (
-              <div key={dir}>
-                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dir === 'THEY_DID_FOR_ME' ? 'text-green-600' : 'text-orange-600'}`}>
-                  {dir === 'THEY_DID_FOR_ME' ? '✅ 相手がしてくれたこと' : '🤝 自分がしたこと'}
-                </h3>
-                {exchanges.filter((e: any) => e.direction === dir).map((ex: any) => (
-                  <div key={ex.id} className={`border rounded-lg p-3 mb-2 ${dir === 'THEY_DID_FOR_ME' ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-                    <div className="flex justify-between items-start">
-                      <p className="text-sm text-gray-700">{ex.description}</p>
-                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                        <span className="text-xs text-gray-400">{new Date(ex.createdAt).toLocaleDateString('ja-JP')}</span>
-                        <button onClick={async () => { await fetch(`/api/exchanges/${ex.id}`, { method: 'DELETE' }); setExchanges((e: any) => e.filter((x: any) => x.id !== ex.id)) }} className="text-xs text-red-400 hover:text-red-600">削除</button>
+              </div>
+
+              {gmailError && (
+                <div className="p-3 bg-red-50 border-b border-red-100 text-red-700 text-sm">
+                  {gmailError}
+                </div>
+              )}
+
+              {gmailLoading ? (
+                <div className="p-8 text-center text-gray-400">
+                  <div className="animate-pulse">メール履歴を取得中...</div>
+                </div>
+              ) : gmailMessages.length === 0 ? (
+                <div className="p-8 text-center text-gray-400 text-sm">
+                  {session?.accessToken ? 'メール履歴がありません' : 'Gmailにログインしてください'}
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+                  {gmailMessages.map(email => (
+                    <div
+                      key={email.id}
+                      className={`p-4 hover:bg-gray-50 transition-colors ${
+                        email.isIncoming ? 'border-l-4 border-l-blue-400' : 'border-l-4 border-l-green-400'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm ${email.isIncoming ? 'text-blue-600' : 'text-green-600'}`}>
+                            {email.isIncoming ? '📥 受信' : '📤 送信'}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {formatGmailDate(email.date)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="font-medium text-gray-900 text-sm mb-1">
+                        {email.subject}
+                      </div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {email.isIncoming ? `From: ${email.from}` : `To: ${email.to}`}
+                      </div>
+                      <div className="text-sm text-gray-600 line-clamp-2">
+                        {email.snippet}
                       </div>
                     </div>
-                  </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Manual Exchanges Section */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">手動記録</h3>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+              <div className="flex gap-2 mb-3">
+                {[['THEY_DID_FOR_ME','相手がしてくれたこと','bg-green-600'],['I_DID_FOR_THEM','自分がしたこと','bg-orange-600']].map(([val, label, bg]) => (
+                  <button key={val} onClick={() => setExchDir(val)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${exchDir === val ? `${bg} text-white border-transparent` : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {label}
+                  </button>
                 ))}
-                {exchanges.filter((e: any) => e.direction === dir).length === 0 && <p className="text-xs text-gray-400 py-2">まだありません</p>}
               </div>
-            ))}
+              <input type="text" value={newExchange} onChange={e => setNewExchange(e.target.value)} placeholder="内容を入力..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={e => e.key === 'Enter' && addExchange()} />
+              <div className="flex justify-end mt-2"><button onClick={addExchange} disabled={!newExchange.trim()} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50">追加</button></div>
+            </div>
+            <div className="space-y-4">
+              {['THEY_DID_FOR_ME','I_DID_FOR_THEM'].map(dir => (
+                <div key={dir}>
+                  <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dir === 'THEY_DID_FOR_ME' ? 'text-green-600' : 'text-orange-600'}`}>
+                    {dir === 'THEY_DID_FOR_ME' ? '✅ 相手がしてくれたこと' : '🤝 自分がしたこと'}
+                  </h3>
+                  {exchanges.filter((e: any) => e.direction === dir).map((ex: any) => (
+                    <div key={ex.id} className={`border rounded-lg p-3 mb-2 ${dir === 'THEY_DID_FOR_ME' ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                      <div className="flex justify-between items-start">
+                        <p className="text-sm text-gray-700">{ex.description}</p>
+                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                          <span className="text-xs text-gray-400">{new Date(ex.createdAt).toLocaleDateString('ja-JP')}</span>
+                          <button onClick={async () => { await fetch(`/api/exchanges/${ex.id}`, { method: 'DELETE' }); setExchanges((e: any) => e.filter((x: any) => x.id !== ex.id)) }} className="text-xs text-red-400 hover:text-red-600">削除</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {exchanges.filter((e: any) => e.direction === dir).length === 0 && <p className="text-xs text-gray-400 py-2">まだありません</p>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
