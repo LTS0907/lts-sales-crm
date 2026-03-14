@@ -32,8 +32,8 @@ function extractDomain(email: string): string {
 }
 
 // Get header value from message headers
-function getHeader(headers: { name: string; value: string }[], name: string): string {
-  const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase())
+function getHeader(headers: { name?: string | null; value?: string | null }[], name: string): string {
+  const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase())
   return header?.value || ''
 }
 
