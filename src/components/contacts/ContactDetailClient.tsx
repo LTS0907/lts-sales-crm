@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { parseRelationships } from '@/lib/relationship-parser'
 import ServiceProgressStepper from '@/components/crm/ServiceProgressStepper'
+import InvoiceModal from './InvoiceModal'
 
 interface GmailMessage {
   id: string
@@ -112,6 +113,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [servicePhaseMap, setServicePhaseMap] = useState<Record<string, string>>(
     Object.fromEntries((contact.servicePhases || []).map((sp: any) => [sp.service, sp.phase]))
   )
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
 
   const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -315,6 +317,12 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               {contact.company && <p className="text-sm font-medium text-blue-600">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => setInvoiceModalOpen(true)}
+                className="px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
+              >
+                📄 見積/請求
+              </button>
               <Link href={`/contacts/${contact.id}/edit`} className="px-3 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">編集</Link>
               <button onClick={deleteContact} className="px-3 py-1 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">削除</button>
             </div>
@@ -773,6 +781,18 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           </div>
         </div>
       )}
+
+      {/* Invoice Modal */}
+      <InvoiceModal
+        isOpen={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        contact={{
+          id: contact.id,
+          name: contact.name,
+          company: contact.company,
+          email: contact.email,
+        }}
+      />
     </div>
   )
 }
