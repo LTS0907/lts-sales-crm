@@ -30,14 +30,24 @@ export default async function CRMDashboard() {
       <h1 className="text-2xl font-bold text-gray-900 mb-5">CRMダッシュボード</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        {metrics.map(m => (
-          <div key={m.label} className={`${m.color} rounded-xl p-4 ${m.href ? 'cursor-pointer hover:opacity-80' : ''}`}
-            onClick={() => m.href && (window.location.href = m.href)}>
-            <p className="text-2xl mb-1">{m.icon}</p>
-            <p className="text-2xl font-bold">{m.value}</p>
-            <p className="text-xs font-medium">{m.label}</p>
-          </div>
-        ))}
+        {metrics.map(m => {
+          const content = (
+            <>
+              <p className="text-2xl mb-1">{m.icon}</p>
+              <p className="text-2xl font-bold">{m.value}</p>
+              <p className="text-xs font-medium">{m.label}</p>
+            </>
+          )
+          return m.href ? (
+            <Link key={m.label} href={m.href} className={`${m.color} rounded-xl p-4 cursor-pointer hover:opacity-80 block`}>
+              {content}
+            </Link>
+          ) : (
+            <div key={m.label} className={`${m.color} rounded-xl p-4`}>
+              {content}
+            </div>
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
