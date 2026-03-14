@@ -48,6 +48,20 @@ export async function GET(request: Request) {
   }
 }
 
+// Convert datetime-local format to ISO 8601 with timezone
+function toISOWithTimezone(dateTimeLocal: string): string {
+  // datetime-local format: "2026-03-14T09:30"
+  // Need to convert to: "2026-03-14T09:30:00+09:00"
+  if (dateTimeLocal.includes('+') || dateTimeLocal.includes('Z')) {
+    // Already has timezone
+    return dateTimeLocal
+  }
+  // Add seconds if missing
+  const withSeconds = dateTimeLocal.length === 16 ? `${dateTimeLocal}:00` : dateTimeLocal
+  // Add JST timezone offset
+  return `${withSeconds}+09:00`
+}
+
 export async function PATCH(request: Request) {
   const session = await getServerSession(authOptions)
 
@@ -58,6 +72,8 @@ export async function PATCH(request: Request) {
   try {
     const body = await request.json()
     const { eventId, title, start, end, location, description, allDay } = body
+
+    console.log('PATCH request body:', { eventId, title, start, end, location, description, allDay })
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 })
@@ -77,14 +93,14 @@ export async function PATCH(request: Request) {
     } = {}
 
     if (title !== undefined) eventUpdate.summary = title
-    if (location !== undefined) eventUpdate.location = location
-    if (description !== undefined) eventUpdate.description = description
+    if (location !== undefined) eventUpdate.location = location || undefined
+    if (description !== undefined) eventUpdate.description = description || undefined
 
     if (start) {
       if (allDay) {
         eventUpdate.start = { date: start.split('T')[0] }
       } else {
-        eventUpdate.start = { dateTime: start, timeZone: 'Asia/Tokyo' }
+        eventUpdate.start = { dateTime: toISOWithTimezone(start), timeZone: 'Asia/Tokyo' }
       }
     }
 
@@ -92,9 +108,11 @@ export async function PATCH(request: Request) {
       if (allDay) {
         eventUpdate.end = { date: end.split('T')[0] }
       } else {
-        eventUpdate.end = { dateTime: end, timeZone: 'Asia/Tokyo' }
+        eventUpdate.end = { dateTime: toISOWithTimezone(end), timeZone: 'Asia/Tokyo' }
       }
     }
+
+    console.log('Event update payload:', JSON.stringify(eventUpdate, null, 2))
 
     const response = await calendar.events.patch({
       calendarId: 'primary',
@@ -112,8 +130,11 @@ export async function PATCH(request: Request) {
       htmlLink: response.data.htmlLink,
       allDay: !response.data.start?.dateTime,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Google Calendar API error:', error)
-    return NextResponse.json({ error: 'Failed to update event' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const gaxiosError = error as { response?: { data?: { error?: { message?: string } } } }
+    const apiError = gaxiosError?.response?.data?.error?.message || errorMessage
+    return NextResponse.json({ error: `Failed to update event: ${apiError}` }, { status: 500 })
   }
 }

@@ -261,13 +261,19 @@ export default function CalendarPage() {
       })
 
       if (!res.ok) {
-        throw new Error('予定の更新に失敗しました')
+        const errorData = await res.json()
+        throw new Error(errorData.error || '予定の更新に失敗しました')
       }
 
       setEditingEvent(null)
       await fetchEvents()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'エラーが発生しました')
+      const message = err instanceof Error ? err.message : 'エラーが発生しました'
+      if (message.includes('insufficient') || message.includes('Insufficient Permission')) {
+        alert('権限エラー: 一度ログアウトして再ログインしてください。カレンダー編集の権限が必要です。')
+      } else {
+        alert(message)
+      }
     } finally {
       setSaving(false)
     }
