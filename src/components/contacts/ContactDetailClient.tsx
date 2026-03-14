@@ -19,6 +19,17 @@ interface GmailMessage {
   isIncoming: boolean
 }
 
+interface GmailFullMessage {
+  id: string
+  threadId: string
+  subject: string
+  from: string
+  to: string
+  cc: string
+  date: string
+  body: string
+}
+
 const NOTE_CATS = [
   { value: 'GENERAL', label: '一般', color: 'bg-gray-50 text-gray-600' },
   { value: 'MEETING', label: '会議', color: 'bg-blue-50 text-blue-600' },
@@ -75,6 +86,8 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([])
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailError, setGmailError] = useState<string | null>(null)
+  const [selectedEmail, setSelectedEmail] = useState<GmailFullMessage | null>(null)
+  const [emailModalLoading, setEmailModalLoading] = useState(false)
   const [notes, setNotes] = useState(contact.notes)
   const [exchanges, setExchanges] = useState(contact.exchanges)
   const [photoPath, setPhotoPath] = useState(contact.photoPath)
@@ -251,6 +264,27 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     }
   }
 
+  const openEmailDetail = async (messageId: string) => {
+    setEmailModalLoading(true)
+    try {
+      const res = await fetch(`/api/gmail/message/${messageId}`)
+      if (!res.ok) {
+        throw new Error('メールの取得に失敗しました')
+      }
+      const data = await res.json()
+      setSelectedEmail(data)
+    } catch (err) {
+      console.error('Error fetching email:', err)
+      alert('メールの取得に失敗しました')
+    } finally {
+      setEmailModalLoading(false)
+    }
+  }
+
+  const closeEmailModal = () => {
+    setSelectedEmail(null)
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
@@ -405,11 +439,13 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               ) : (
                 <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
                   {gmailMessages.map(email => (
-                    <div
+                    <button
                       key={email.id}
-                      className={`p-4 hover:bg-gray-50 transition-colors ${
+                      onClick={() => openEmailDetail(email.id)}
+                      disabled={emailModalLoading}
+                      className={`w-full text-left p-4 hover:bg-gray-50 transition-colors cursor-pointer ${
                         email.isIncoming ? 'border-l-4 border-l-blue-400' : 'border-l-4 border-l-green-400'
-                      }`}
+                      } ${emailModalLoading ? 'opacity-50' : ''}`}
                     >
                       <div className="flex items-start justify-between mb-1">
                         <div className="flex items-center gap-2">
@@ -420,6 +456,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                             {formatGmailDate(email.date)}
                           </span>
                         </div>
+                        <span className="text-xs text-gray-400">クリックで全文表示</span>
                       </div>
                       <div className="font-medium text-gray-900 text-sm mb-1">
                         {email.subject}
@@ -430,7 +467,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                       <div className="text-sm text-gray-600 line-clamp-2">
                         {email.snippet}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -657,6 +694,73 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
             {notes.length === 0 ? <p className="text-sm text-gray-400">メモを追加してから生成できます</p>
               : aiSummary ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{aiSummary}</p>
               : <p className="text-sm text-gray-400">「まとめを生成」を押してAIによる人物分析を行います</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Email Detail Modal */}
+      {selectedEmail && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeEmailModal}>
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-200 flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <h2 className="font-bold text-gray-900 text-lg truncate">{selectedEmail.subject}</h2>
+                <p className="text-xs text-gray-500 mt-1">{formatGmailDate(selectedEmail.date)}</p>
+              </div>
+              <button
+                onClick={closeEmailModal}
+                className="ml-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Email Meta */}
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm space-y-1">
+              <div className="flex">
+                <span className="text-gray-500 w-16 flex-shrink-0">From:</span>
+                <span className="text-gray-900">{selectedEmail.from}</span>
+              </div>
+              <div className="flex">
+                <span className="text-gray-500 w-16 flex-shrink-0">To:</span>
+                <span className="text-gray-900">{selectedEmail.to}</span>
+              </div>
+              {selectedEmail.cc && (
+                <div className="flex">
+                  <span className="text-gray-500 w-16 flex-shrink-0">Cc:</span>
+                  <span className="text-gray-900">{selectedEmail.cc}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Email Body */}
+            <div className="p-4 overflow-y-auto flex-1">
+              <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {selectedEmail.body}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <a
+                href={`https://mail.google.com/mail/u/0/#inbox/${selectedEmail.threadId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Gmailで開く
+              </a>
+              <button
+                onClick={closeEmailModal}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                閉じる
+              </button>
+            </div>
           </div>
         </div>
       )}
