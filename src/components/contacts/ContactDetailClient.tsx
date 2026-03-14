@@ -287,6 +287,15 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      {/* Back Button */}
+      <button
+        onClick={() => router.back()}
+        className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4 -mt-2"
+      >
+        <span>←</span>
+        <span>戻る</span>
+      </button>
+
       {/* Header */}
       <div className="flex items-start gap-5 mb-6">
         <div className="relative">
