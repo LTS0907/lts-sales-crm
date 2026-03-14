@@ -17,6 +17,7 @@ const nav = [
     { href: '/crm/pipeline', label: 'パイプライン', icon: '🔄' },
     { href: '/crm/emails', label: 'メール管理', icon: '✉️' },
     { href: '/crm/followups', label: 'フォローアップ', icon: '🔔' },
+    { href: '/email-sync', label: 'Gmail照合', icon: '📧' },
   ]},
 ]
 
