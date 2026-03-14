@@ -119,7 +119,7 @@ function OverviewView({ servicePhases, allContacts }: { servicePhases: ServicePh
   )
 }
 
-// ---- Service Detail ----
+// ---- Service Detail (Kanban Board View) ----
 function ServiceDetailView({
   serviceName,
   servicePhases,
@@ -149,12 +149,14 @@ function ServiceDetailView({
 
   const notStarted = contactsForSvc.filter(c => !contactPhaseMap.has(c.id))
 
-  type Row = { contact: ContactInfo; phaseLabel: string; phaseIndex: number }
-  const rows: Row[] = [
-    ...notStarted.map(c => ({ contact: c, phaseLabel: '未開始', phaseIndex: -1 })),
-    ...phases.flatMap((p, i) =>
-      (contactsByPhase.get(p.key) ?? []).map(c => ({ contact: c, phaseLabel: p.label, phaseIndex: i }))
-    ),
+  // All columns including "未開始"
+  const allColumns = [
+    { key: 'NOT_STARTED', label: '未開始', contacts: notStarted },
+    ...phases.map(p => ({
+      key: p.key,
+      label: p.label,
+      contacts: contactsByPhase.get(p.key) ?? [],
+    })),
   ]
 
   return (
@@ -166,75 +168,85 @@ function ServiceDetailView({
         <span className="text-sm text-gray-400">合計 {contactsForSvc.length}名</span>
       </div>
 
-      {/* Phase summary */}
-      <div className="flex flex-wrap gap-2 mb-6 p-3 bg-gray-50 rounded-xl border border-gray-200">
-        <span className="text-xs font-medium text-gray-500 self-center mr-1">フェーズ別：</span>
-        <span className="text-xs px-3 py-1 rounded-full bg-white border border-gray-300 text-gray-500 font-medium">
-          未開始 {notStarted.length}名
-        </span>
-        {phases.map(p => {
-          const count = (contactsByPhase.get(p.key) ?? []).length
-          return (
-            <span
-              key={p.key}
-              className={`text-xs px-3 py-1 rounded-full font-medium ${count > 0 ? svc.badge : 'bg-white border border-gray-200 text-gray-300'}`}
+      {/* Kanban Board */}
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-3 min-w-max">
+          {allColumns.map((col, colIndex) => (
+            <div
+              key={col.key}
+              className={`w-52 flex-shrink-0 rounded-xl border-t-4 ${
+                colIndex === 0 ? 'border-gray-300 bg-gray-50' : `${svc.border} ${svc.bg}`
+              } p-3`}
             >
-              {p.label} {count}名
-            </span>
-          )
-        })}
-      </div>
-
-      {/* Contact rows */}
-      {rows.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-3xl mb-2">📋</p>
-          <p className="text-sm">このサービスの対象者がいません</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {rows.map(({ contact, phaseLabel, phaseIndex }) => (
-            <Link key={contact.id} href={`/contacts/${contact.id}`}>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-gray-300 transition-all flex items-start gap-4">
-                {/* Phase indicator */}
-                <div className="flex-shrink-0 text-center w-20">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white mx-auto mb-1 ${phaseIndex < 0 ? 'bg-gray-300' : svc.bar}`}>
-                    {phaseIndex < 0 ? '—' : phaseIndex + 1}
-                  </div>
-                  <p className={`text-xs font-medium leading-tight ${phaseIndex < 0 ? 'text-gray-400' : svc.text}`}>
-                    {phaseLabel}
-                  </p>
+              {/* Column Header */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                    colIndex === 0 ? 'bg-gray-400' : svc.bar
+                  }`}>
+                    {colIndex === 0 ? '−' : colIndex}
+                  </span>
+                  <h3 className={`text-xs font-semibold ${colIndex === 0 ? 'text-gray-600' : svc.text}`}>
+                    {col.label}
+                  </h3>
                 </div>
-
-                {/* Contact info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm">{contact.name}</p>
-                      {contact.company && <p className="text-xs text-blue-600 truncate">{contact.company}</p>}
-                      {contact.title && <p className="text-xs text-gray-500 truncate">{contact.title}</p>}
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 text-xs">
-                      <span className={`font-medium ${EMAIL_COLOR[contact.emailStatus] ?? 'text-gray-400'}`}>
-                        📧 {EMAIL_STATUS[contact.emailStatus] ?? '未送信'}
-                      </span>
-                      {contact.followUpStatus !== 'NOT_SET' && (
-                        <span className="text-orange-500 font-medium">🔔 フォロー中</span>
-                      )}
-                    </div>
-                  </div>
-                  {(contact.phone || contact.email) && (
-                    <div className="flex gap-4 mt-1.5 text-xs text-gray-400">
-                      {contact.phone && <span>📞 {contact.phone}</span>}
-                      {contact.email && <span className="truncate">✉ {contact.email}</span>}
-                    </div>
-                  )}
-                </div>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                  colIndex === 0 ? 'bg-gray-200 text-gray-600' : svc.badge
+                }`}>
+                  {col.contacts.length}
+                </span>
               </div>
-            </Link>
+
+              {/* Contact Cards */}
+              <div className="space-y-2 max-h-[calc(100vh-220px)] overflow-y-auto">
+                {col.contacts.length === 0 ? (
+                  <div className="text-center py-6 text-gray-400">
+                    <p className="text-xs">なし</p>
+                  </div>
+                ) : (
+                  col.contacts.map(contact => (
+                    <Link key={contact.id} href={`/contacts/${contact.id}`}>
+                      <div className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow border border-gray-100 cursor-pointer">
+                        <div className="flex items-start justify-between gap-1 mb-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{contact.name}</p>
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${
+                            contact.emailStatus === 'SENT' ? 'bg-green-400' :
+                            contact.emailStatus === 'APPROVED' ? 'bg-blue-400' :
+                            contact.emailStatus === 'DRAFTED' ? 'bg-yellow-400' : 'bg-gray-300'
+                          }`} title={EMAIL_STATUS[contact.emailStatus] || '未送信'} />
+                        </div>
+                        {contact.company && (
+                          <p className="text-xs text-gray-500 truncate mb-1">{contact.company}</p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={`${EMAIL_COLOR[contact.emailStatus] ?? 'text-gray-400'}`}>
+                            📧 {EMAIL_STATUS[contact.emailStatus] ?? '未送信'}
+                          </span>
+                          {contact.followUpStatus !== 'NOT_SET' && (
+                            <span className="text-orange-500">🔔</span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
           ))}
         </div>
-      )}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+          <span className="font-medium">ステータス:</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300" /> 未送信</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400" /> 下書き</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" /> 送信許可</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400" /> 送信済</span>
+          <span className="flex items-center gap-1">🔔 フォロー中</span>
+        </div>
+      </div>
     </div>
   )
 }
