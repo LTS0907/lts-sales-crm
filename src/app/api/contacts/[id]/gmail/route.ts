@@ -30,6 +30,44 @@ function extractDomain(email: string): string {
   return parts.length > 1 ? parts[1].toLowerCase() : ''
 }
 
+// List of common free email domains
+const FREE_EMAIL_DOMAINS = [
+  'gmail.com',
+  'yahoo.com',
+  'yahoo.co.jp',
+  'hotmail.com',
+  'outlook.com',
+  'outlook.jp',
+  'live.com',
+  'live.jp',
+  'msn.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'mail.com',
+  'protonmail.com',
+  'zoho.com',
+  'ymail.com',
+  'googlemail.com',
+  'docomo.ne.jp',
+  'ezweb.ne.jp',
+  'au.com',
+  'softbank.ne.jp',
+  'i.softbank.jp',
+  'ymobile.ne.jp',
+  'rakuten.jp',
+  'nifty.com',
+  'biglobe.ne.jp',
+  'ocn.ne.jp',
+  'plala.or.jp',
+  'so-net.ne.jp',
+]
+
+function isFreeEmailDomain(domain: string): boolean {
+  return FREE_EMAIL_DOMAINS.includes(domain.toLowerCase())
+}
+
 // Get header value from message headers
 function getHeader(headers: { name?: string | null; value?: string | null }[], name: string): string {
   const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase())
@@ -61,7 +99,8 @@ export async function GET(
       return NextResponse.json({ emails: [], message: 'No email address for this contact' })
     }
 
-    const contactDomain = extractDomain(contact.email)
+    const contactEmail = contact.email.toLowerCase()
+    const contactDomain = extractDomain(contactEmail)
     if (!contactDomain) {
       return NextResponse.json({ emails: [], message: 'Invalid email domain' })
     }
@@ -76,8 +115,17 @@ export async function GET(
     const myEmail = profile.data.emailAddress?.toLowerCase() || ''
     const myDomain = extractDomain(myEmail)
 
-    // Search for emails with this domain
-    const query = `(from:@${contactDomain} OR to:@${contactDomain})`
+    // Build search query based on whether it's a free email or company domain
+    const isFreeMail = isFreeEmailDomain(contactDomain)
+    let query: string
+
+    if (isFreeMail) {
+      // For free email: exact email match
+      query = `(from:${contactEmail} OR to:${contactEmail})`
+    } else {
+      // For company domain: domain match
+      query = `(from:@${contactDomain} OR to:@${contactDomain})`
+    }
 
     const listResponse = await gmail.users.messages.list({
       userId: 'me',

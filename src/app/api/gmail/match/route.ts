@@ -42,6 +42,44 @@ function extractDomain(email: string): string {
   return parts.length > 1 ? parts[1].toLowerCase() : ''
 }
 
+// List of common free email domains
+const FREE_EMAIL_DOMAINS = [
+  'gmail.com',
+  'yahoo.com',
+  'yahoo.co.jp',
+  'hotmail.com',
+  'outlook.com',
+  'outlook.jp',
+  'live.com',
+  'live.jp',
+  'msn.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'mail.com',
+  'protonmail.com',
+  'zoho.com',
+  'ymail.com',
+  'googlemail.com',
+  'docomo.ne.jp',
+  'ezweb.ne.jp',
+  'au.com',
+  'softbank.ne.jp',
+  'i.softbank.jp',
+  'ymobile.ne.jp',
+  'rakuten.jp',
+  'nifty.com',
+  'biglobe.ne.jp',
+  'ocn.ne.jp',
+  'plala.or.jp',
+  'so-net.ne.jp',
+]
+
+function isFreeEmailDomain(domain: string): boolean {
+  return FREE_EMAIL_DOMAINS.includes(domain.toLowerCase())
+}
+
 // Get header value from message headers
 function getHeader(headers: { name?: string | null; value?: string | null }[], name: string): string {
   const header = headers.find(h => h.name?.toLowerCase() === name.toLowerCase())
@@ -88,16 +126,34 @@ export async function GET(request: Request) {
       },
     })
 
-    // Build domain to contacts mapping
-    const domainToContacts: Record<string, typeof contacts> = {}
+    // Build mapping for contacts
+    // For free email domains: use full email as key (exact match)
+    // For company domains: use domain as key (domain match)
+    const emailToContacts: Record<string, typeof contacts> = {}  // For free email (exact match)
+    const domainToContacts: Record<string, typeof contacts> = {} // For company domain
+    const knownFreeEmails = new Set<string>() // Track known free email addresses
+    const knownCompanyDomains = new Set<string>() // Track known company domains
+
     for (const contact of contacts) {
       if (contact.email) {
-        const domain = extractDomain(contact.email)
+        const email = contact.email.toLowerCase()
+        const domain = extractDomain(email)
         if (domain && domain !== myDomain) {
-          if (!domainToContacts[domain]) {
-            domainToContacts[domain] = []
+          if (isFreeEmailDomain(domain)) {
+            // Free email: exact match
+            if (!emailToContacts[email]) {
+              emailToContacts[email] = []
+            }
+            emailToContacts[email].push(contact)
+            knownFreeEmails.add(email)
+          } else {
+            // Company domain: domain match
+            if (!domainToContacts[domain]) {
+              domainToContacts[domain] = []
+            }
+            domainToContacts[domain].push(contact)
+            knownCompanyDomains.add(domain)
           }
-          domainToContacts[domain].push(contact)
         }
       }
     }
@@ -107,9 +163,8 @@ export async function GET(request: Request) {
     afterDate.setDate(afterDate.getDate() - daysBack)
     const afterStr = `${afterDate.getFullYear()}/${afterDate.getMonth() + 1}/${afterDate.getDate()}`
 
-    // Build search query for emails from/to known domains
-    const knownDomains = Object.keys(domainToContacts)
-    if (knownDomains.length === 0) {
+    // Check if we have any contacts to match
+    if (knownFreeEmails.size === 0 && knownCompanyDomains.size === 0) {
       return NextResponse.json({
         myEmail,
         myDomain,
@@ -129,7 +184,10 @@ export async function GET(request: Request) {
     const messages = listResponse.data.messages || []
 
     // Fetch message details and match with contacts
-    const emailsByDomain: Record<string, EmailMessage[]> = {}
+    // For company domains: group by domain
+    // For free emails: group by exact email address
+    const emailsByDomain: Record<string, EmailMessage[]> = {} // For company domain matching
+    const emailsByEmail: Record<string, EmailMessage[]> = {} // For free email exact matching
     const unmatchedDomains: Set<string> = new Set()
 
     for (const msg of messages) {
@@ -174,14 +232,30 @@ export async function GET(request: Request) {
           isIncoming,
         }
 
-        // Check if domain matches known contacts
-        if (domainToContacts[otherDomain]) {
-          if (!emailsByDomain[otherDomain]) {
-            emailsByDomain[otherDomain] = []
+        // Get the other party's email address
+        const otherEmail = isIncoming ? fromEmail : toEmail
+
+        // Check if this is a free email domain
+        if (isFreeEmailDomain(otherDomain)) {
+          // Free email: check exact email match
+          if (emailToContacts[otherEmail]) {
+            if (!emailsByEmail[otherEmail]) {
+              emailsByEmail[otherEmail] = []
+            }
+            emailsByEmail[otherEmail].push(emailData)
+          } else {
+            unmatchedDomains.add(otherDomain)
           }
-          emailsByDomain[otherDomain].push(emailData)
         } else {
-          unmatchedDomains.add(otherDomain)
+          // Company domain: check domain match
+          if (domainToContacts[otherDomain]) {
+            if (!emailsByDomain[otherDomain]) {
+              emailsByDomain[otherDomain] = []
+            }
+            emailsByDomain[otherDomain].push(emailData)
+          } else {
+            unmatchedDomains.add(otherDomain)
+          }
         }
       } catch (err) {
         console.error('Error fetching message:', msg.id, err)
@@ -191,6 +265,7 @@ export async function GET(request: Request) {
     // Build matched contacts response
     const matchedContacts: MatchedContact[] = []
 
+    // Process company domain matches
     for (const domain of Object.keys(emailsByDomain)) {
       const contactsForDomain = domainToContacts[domain]
       const emails = emailsByDomain[domain]
@@ -211,17 +286,43 @@ export async function GET(request: Request) {
       }
     }
 
+    // Process free email matches (exact email match)
+    for (const email of Object.keys(emailsByEmail)) {
+      const contactsForEmail = emailToContacts[email]
+      const emails = emailsByEmail[email]
+      const domain = extractDomain(email)
+
+      // Sort emails by date (newest first)
+      emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+      for (const contact of contactsForEmail) {
+        matchedContacts.push({
+          id: contact.id,
+          name: contact.name,
+          company: contact.company,
+          email: contact.email,
+          domain,
+          emails,
+          latestEmailDate: emails[0]?.date || '',
+        })
+      }
+    }
+
     // Sort by latest email date
     matchedContacts.sort((a, b) =>
       new Date(b.latestEmailDate).getTime() - new Date(a.latestEmailDate).getTime()
     )
+
+    // Calculate total emails
+    const totalDomainEmails = Object.values(emailsByDomain).flat().length
+    const totalEmailEmails = Object.values(emailsByEmail).flat().length
 
     return NextResponse.json({
       myEmail,
       myDomain,
       matchedContacts,
       unmatchedDomains: Array.from(unmatchedDomains).sort(),
-      totalEmails: Object.values(emailsByDomain).flat().length,
+      totalEmails: totalDomainEmails + totalEmailEmails,
     })
   } catch (error: unknown) {
     console.error('Gmail Match API error:', error)
