@@ -84,6 +84,11 @@ function groupIcon(mode: GroupMode, key: string): string {
 
 const SCROLL_KEY = 'contacts-scroll-position'
 
+// Get the main scrollable element (the <main> tag in layout.tsx)
+function getScrollContainer(): Element | null {
+  return document.querySelector('main')
+}
+
 export default function ContactsClient({ contacts }: { contacts: any[] }) {
   const [mode, setMode] = useState<GroupMode>('company')
 
@@ -103,18 +108,24 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
       const pos = parseInt(savedPosition, 10)
       // Use requestAnimationFrame to ensure DOM is ready
       requestAnimationFrame(() => {
-        window.scrollTo(0, pos)
+        const container = getScrollContainer()
+        if (container) {
+          container.scrollTop = pos
+        }
       })
     }
   }, [])
 
   // Save scroll position before leaving
   useEffect(() => {
+    const container = getScrollContainer()
+    if (!container) return
+
     const handleScroll = () => {
-      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY))
+      sessionStorage.setItem(SCROLL_KEY, String(container.scrollTop))
     }
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
   }, [])
 
   return (
