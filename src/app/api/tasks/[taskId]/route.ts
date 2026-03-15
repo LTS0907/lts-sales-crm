@@ -4,7 +4,15 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
 
-// PATCH /api/tasks/[taskId] — update task
+async function getTaskListId(taskId: string, client: any) {
+  const taskLink = await prisma.taskLink.findUnique({
+    where: { googleTaskId: taskId },
+  })
+  if (taskLink) return taskLink.taskListId
+  return getOrCreateCrmTaskList(client)
+}
+
+// PATCH /api/tasks/[taskId]
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
@@ -19,39 +27,43 @@ export async function PATCH(
 
   try {
     const client = getTasksClient(session.accessToken)
+    const taskListId = await getTaskListId(taskId, client)
 
-    const taskLink = await prisma.taskLink.findUnique({
-      where: { googleTaskId: taskId },
-    })
-    const taskListId = taskLink?.taskListId || await getOrCreateCrmTaskList(client)
+    // 現在のタスクを取得
+    const current = await client.tasks.get({ tasklist: taskListId, task: taskId })
+    const c = current.data
 
-    // まず現在のタスクを取得
-    const current = await client.tasks.get({
-      tasklist: taskListId,
-      task: taskId,
-    })
+    // 更新可能なフィールドだけを構築
+    const requestBody: any = {
+      id: c.id,
+      title: body.title !== undefined ? body.title : c.title,
+      notes: body.notes !== undefined ? body.notes : (c.notes || ''),
+      status: body.status !== undefined ? body.status : c.status,
+    }
 
-    // 現在の値にリクエストの値をマージ
-    const merged = { ...current.data }
-    if (body.title !== undefined) merged.title = body.title
-    if (body.notes !== undefined) merged.notes = body.notes
+    // 期限
     if (body.due !== undefined) {
-      merged.due = body.due ? new Date(body.due).toISOString() : undefined
-    }
-    if (body.status !== undefined) {
-      merged.status = body.status
-      if (body.status === 'completed') {
-        merged.completed = new Date().toISOString()
-      } else if (body.status === 'needsAction') {
-        merged.completed = undefined
+      if (body.due) {
+        requestBody.due = new Date(body.due).toISOString()
       }
+      // due=null の場合はフィールドを含めない（期限削除）
+    } else if (c.due) {
+      requestBody.due = c.due
     }
 
-    // update（PUT）で全フィールドを送信
+    // 完了
+    if (body.status === 'completed') {
+      requestBody.completed = new Date().toISOString()
+    } else if (body.status === 'needsAction') {
+      // completedを含めない
+    } else if (c.completed) {
+      requestBody.completed = c.completed
+    }
+
     const updated = await client.tasks.update({
       tasklist: taskListId,
       task: taskId,
-      requestBody: merged,
+      requestBody,
     })
 
     return NextResponse.json({
@@ -64,8 +76,11 @@ export async function PATCH(
       updated: updated.data.updated,
     })
   } catch (err: any) {
-    console.error('Tasks PATCH error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('Tasks PATCH error:', err?.response?.data || err.message || err)
+    return NextResponse.json(
+      { error: err?.response?.data?.error?.message || err.message || 'タスク更新に失敗' },
+      { status: err?.response?.status || 500 }
+    )
   }
 }
 
@@ -83,24 +98,18 @@ export async function DELETE(
 
   try {
     const client = getTasksClient(session.accessToken)
+    const taskListId = await getTaskListId(taskId, client)
 
-    const taskLink = await prisma.taskLink.findUnique({
-      where: { googleTaskId: taskId },
-    })
-    const taskListId = taskLink?.taskListId || await getOrCreateCrmTaskList(client)
+    await client.tasks.delete({ tasklist: taskListId, task: taskId })
 
-    await client.tasks.delete({
-      tasklist: taskListId,
-      task: taskId,
-    })
-
-    if (taskLink) {
-      await prisma.taskLink.delete({ where: { id: taskLink.id } }).catch(() => {})
-    }
+    await prisma.taskLink.deleteMany({ where: { googleTaskId: taskId } }).catch(() => {})
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    console.error('Tasks DELETE error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('Tasks DELETE error:', err?.response?.data || err.message || err)
+    return NextResponse.json(
+      { error: err?.response?.data?.error?.message || err.message || 'タスク削除に失敗' },
+      { status: err?.response?.status || 500 }
+    )
   }
 }

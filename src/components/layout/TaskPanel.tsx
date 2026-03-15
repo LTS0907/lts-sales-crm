@@ -92,8 +92,11 @@ export default function TaskPanel() {
         updated: updated.updated,
       } : t))
       setExpandedId(null)
+      // 保存後にGoogleから最新を再取得して確実に同期
+      fetchTasks()
     } catch (err) {
       alert(err instanceof Error ? err.message : '保存に失敗しました')
+      fetchTasks()
     } finally {
       setSaving(false)
     }
