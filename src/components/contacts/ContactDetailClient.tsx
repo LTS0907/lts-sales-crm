@@ -293,7 +293,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
 
   // Fetch tasks when tasks tab is opened
   useEffect(() => {
-    if (tab === 'tasks' && session?.accessToken && contactTasks.length === 0 && !tasksLoading) {
+    if (tab === 'tasks' && session?.accessToken && !tasksLoading) {
       fetchContactTasks()
     }
   }, [tab, session?.accessToken])

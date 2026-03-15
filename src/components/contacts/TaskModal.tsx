@@ -11,25 +11,39 @@ interface TaskModalProps {
 }
 
 export default function TaskModal({ isOpen, onClose, contactId, contactName, onTaskCreated }: TaskModalProps) {
-  const [customTitle, setCustomTitle] = useState('')
-  const [customDue, setCustomDue] = useState('')
-  const [customNotes, setCustomNotes] = useState('')
-  const [loading, setLoading] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
+  const [due, setDue] = useState('')
+  const [notes, setNotes] = useState('')
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   if (!isOpen) return null
 
-  const createTask = async (title: string, presetLabel?: string) => {
-    setLoading(presetLabel || title)
+  const selectPreset = (preset: { label: string; icon: string }) => {
+    if (selectedPreset === preset.label) {
+      // 同じものをタップしたら解除
+      setSelectedPreset(null)
+      setTitle('')
+    } else {
+      setSelectedPreset(preset.label)
+      setTitle(preset.label)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) return
+    setLoading(true)
     try {
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contactId,
-          title: `${title} - ${contactName}`,
-          notes: customNotes || undefined,
-          due: customDue || undefined,
-          presetLabel,
+          title: `${title.trim()} - ${contactName}`,
+          notes: notes || undefined,
+          due: due || undefined,
+          presetLabel: selectedPreset || undefined,
         }),
       })
       if (!res.ok) {
@@ -38,20 +52,15 @@ export default function TaskModal({ isOpen, onClose, contactId, contactName, onT
       }
       onTaskCreated()
       onClose()
-      setCustomTitle('')
-      setCustomDue('')
-      setCustomNotes('')
+      setTitle('')
+      setDue('')
+      setNotes('')
+      setSelectedPreset(null)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'エラーが発生しました')
     } finally {
-      setLoading(null)
+      setLoading(false)
     }
-  }
-
-  const handleCustomSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!customTitle.trim()) return
-    createTask(customTitle.trim())
   }
 
   return (
@@ -68,59 +77,68 @@ export default function TaskModal({ isOpen, onClose, contactId, contactName, onT
           <p className="text-xs text-gray-500 mt-1">{contactName}</p>
         </div>
 
-        {/* Preset Buttons */}
-        <div className="p-4 border-b border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 mb-3">ワンタップ作成</p>
-          <div className="grid grid-cols-2 gap-2">
-            {PRESET_TASKS.map(preset => (
-              <button
-                key={preset.label}
-                onClick={() => createTask(preset.label, preset.label)}
-                disabled={loading !== null}
-                className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors disabled:opacity-50"
-              >
-                <span>{preset.icon}</span>
-                <span>{preset.label}</span>
-                {loading === preset.label && <span className="ml-auto animate-spin text-xs">⏳</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Custom Task Form */}
-        <form onSubmit={handleCustomSubmit} className="p-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500">カスタムタスク</p>
-          <input
-            type="text"
-            value={customTitle}
-            onChange={e => setCustomTitle(e.target.value)}
-            placeholder="タスク名を入力..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="text-xs text-gray-500 mb-1 block">期限（任意）</label>
-              <input
-                type="date"
-                value={customDue}
-                onChange={e => setCustomDue(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Preset Buttons */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">よくあるタスク</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PRESET_TASKS.map(preset => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => selectPreset(preset)}
+                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    selectedPreset === preset.label
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700'
+                  }`}
+                >
+                  <span>{preset.icon}</span>
+                  <span className="truncate">{preset.label}</span>
+                </button>
+              ))}
             </div>
           </div>
-          <textarea
-            value={customNotes}
-            onChange={e => setCustomNotes(e.target.value)}
-            placeholder="メモ（任意）"
-            rows={2}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
+
+          {/* Task name input */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">タスク名</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => { setTitle(e.target.value); setSelectedPreset(null) }}
+              placeholder="タスク名を入力..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">期限（任意）</label>
+            <input
+              type="date"
+              value={due}
+              onChange={e => setDue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">メモ（任意）</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="メモを入力..."
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+
           <button
             type="submit"
-            disabled={!customTitle.trim() || loading !== null}
-            className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            disabled={!title.trim() || loading}
+            className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading && loading === customTitle ? '作成中...' : 'タスクを作成'}
+            {loading ? '作成中...' : 'タスクを作成'}
           </button>
         </form>
       </div>

@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
     const googleTasks = res.data.items || []
 
     // Get TaskLinks for mapping
-    const where = contactId ? { contactId, taskListId } : { taskListId }
+    const where: any = {}
+    if (contactId) where.contactId = contactId
     const taskLinks = await prisma.taskLink.findMany({
       where,
       include: { contact: { select: { id: true, name: true, company: true } } },
