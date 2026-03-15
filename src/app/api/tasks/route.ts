@@ -4,65 +4,35 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
 
-// GET /api/tasks?contactId=xxx
-export async function GET(req: NextRequest) {
+// GET /api/tasks — Google Tasksの「CRM」リストをそのまま返す
+export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const contactId = req.nextUrl.searchParams.get('contactId')
-
   try {
     const client = getTasksClient(session.accessToken)
+    const taskListId = await getOrCreateCrmTaskList(client)
 
-    // Get TaskLinks from DB
-    const where: any = {}
-    if (contactId) where.contactId = contactId
-    const taskLinks = await prisma.taskLink.findMany({
-      where,
-      include: { contact: { select: { id: true, name: true, company: true } } },
+    const res = await client.tasks.list({
+      tasklist: taskListId,
+      maxResults: 100,
+      showCompleted: true,
+      showHidden: true,
     })
 
-    if (taskLinks.length === 0) {
-      return NextResponse.json([])
-    }
+    const items = (res.data.items || []).map(t => ({
+      id: t.id,
+      title: t.title,
+      notes: t.notes,
+      status: t.status,
+      due: t.due,
+      completed: t.completed,
+      updated: t.updated,
+    }))
 
-    // Fetch each task individually from Google Tasks using stored IDs
-    const tasks = await Promise.all(
-      taskLinks.map(async (tl) => {
-        try {
-          const res = await client.tasks.get({
-            tasklist: tl.taskListId,
-            task: tl.googleTaskId,
-          })
-          const gt = res.data
-          return {
-            id: gt.id,
-            title: gt.title,
-            notes: gt.notes,
-            status: gt.status,
-            due: gt.due,
-            completed: gt.completed,
-            updated: gt.updated,
-            taskListId: tl.taskListId,
-            contactId: tl.contactId,
-            contactName: tl.contact.name,
-            contactCompany: tl.contact.company,
-            presetLabel: tl.presetLabel,
-            linkId: tl.id,
-          }
-        } catch (err: any) {
-          // Task was deleted from Google Tasks — clean up the orphaned link
-          if (err.code === 404) {
-            await prisma.taskLink.delete({ where: { id: tl.id } }).catch(() => {})
-          }
-          return null
-        }
-      })
-    )
-
-    return NextResponse.json(tasks.filter(Boolean))
+    return NextResponse.json(items)
   } catch (err: any) {
     console.error('Tasks GET error:', err)
     if (err.message?.includes('insufficient') || err.code === 403) {
@@ -81,30 +51,33 @@ export async function POST(req: NextRequest) {
 
   const { contactId, title, notes, due, presetLabel } = await req.json()
 
-  if (!contactId || !title) {
-    return NextResponse.json({ error: 'contactId and title are required' }, { status: 400 })
+  if (!title) {
+    return NextResponse.json({ error: 'title is required' }, { status: 400 })
   }
 
   try {
     const client = getTasksClient(session.accessToken)
     const taskListId = await getOrCreateCrmTaskList(client)
 
-    // Look up contact name for the task notes
-    const contact = await prisma.contact.findUnique({
-      where: { id: contactId },
-      select: { name: true, company: true },
-    })
+    // Build notes with contact info if contactId provided
+    let taskNotes = notes || ''
+    if (contactId) {
+      const contact = await prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { name: true, company: true },
+      })
+      if (contact) {
+        taskNotes = [
+          taskNotes,
+          `---`,
+          `お客様: ${contact.name}${contact.company ? ` (${contact.company})` : ''}`,
+        ].filter(Boolean).join('\n')
+      }
+    }
 
-    const taskNotes = [
-      notes || '',
-      `---`,
-      `お客様: ${contact?.name || ''}${contact?.company ? ` (${contact.company})` : ''}`,
-    ].filter(Boolean).join('\n')
-
-    // Create task in Google Tasks
     const requestBody: any = {
       title,
-      notes: taskNotes,
+      notes: taskNotes || undefined,
       status: 'needsAction',
     }
     if (due) {
@@ -116,25 +89,24 @@ export async function POST(req: NextRequest) {
       requestBody,
     })
 
-    // Save mapping locally
-    const taskLink = await prisma.taskLink.create({
-      data: {
-        googleTaskId: created.data.id!,
-        taskListId,
-        contactId,
-        presetLabel: presetLabel || null,
-      },
-    })
+    // Save link if contactId provided
+    if (contactId) {
+      await prisma.taskLink.create({
+        data: {
+          googleTaskId: created.data.id!,
+          taskListId,
+          contactId,
+          presetLabel: presetLabel || null,
+        },
+      }).catch(() => {}) // non-critical
+    }
 
     return NextResponse.json({
       id: created.data.id,
       title: created.data.title,
       status: created.data.status,
       due: created.data.due,
-      taskListId,
-      contactId,
-      presetLabel,
-      linkId: taskLink.id,
+      notes: created.data.notes,
     })
   } catch (err: any) {
     console.error('Tasks POST error:', err)
