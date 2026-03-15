@@ -568,18 +568,22 @@ export default function TaskPanel() {
       )}
 
       {!collapsed && (
-        <aside
-          className="hidden md:block h-screen bg-white border-l border-gray-200 flex-shrink-0 overflow-hidden relative"
-          style={{ width: panelWidth }}
-        >
-          {/* リサイズハンドル */}
+        <div className="hidden md:flex h-screen flex-shrink-0 relative">
+          {/* リサイズハンドル（aside外側に配置） */}
           <div
             onMouseDown={startResize}
-            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400 active:bg-blue-500 transition-colors z-20"
+            className="absolute -left-2 top-0 bottom-0 w-4 cursor-col-resize z-30 group"
             title="ドラッグで幅を変更"
-          />
-          {panelContent}
-        </aside>
+          >
+            <div className="absolute left-1.5 top-0 bottom-0 w-1 group-hover:bg-blue-400 group-active:bg-blue-500 transition-colors rounded" />
+          </div>
+          <aside
+            className="h-full bg-white border-l border-gray-200 overflow-hidden"
+            style={{ width: panelWidth }}
+          >
+            {panelContent}
+          </aside>
+        </div>
       )}
     </>
   )
