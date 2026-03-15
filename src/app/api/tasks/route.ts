@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(tasks)
   } catch (err: any) {
     console.error('Tasks GET error:', err)
+    if (err.message?.includes('insufficient') || err.code === 403) {
+      return NextResponse.json({ error: 'Google Tasksの権限がありません。ログアウトして再ログインしてください。' }, { status: 403 })
+    }
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
@@ -130,6 +133,9 @@ export async function POST(req: NextRequest) {
     })
   } catch (err: any) {
     console.error('Tasks POST error:', err)
+    if (err.message?.includes('insufficient') || err.code === 403) {
+      return NextResponse.json({ error: 'Google Tasksの権限がありません。ログアウトして再ログインしてください。' }, { status: 403 })
+    }
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
