@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { prisma } from '@/lib/prisma'
 import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
-
-async function getTaskListId(taskId: string, client: any) {
-  const taskLink = await prisma.taskLink.findUnique({
-    where: { googleTaskId: taskId },
-  })
-  if (taskLink) return taskLink.taskListId
-  return getOrCreateCrmTaskList(client)
-}
 
 // PATCH /api/tasks/[taskId] — 削除→再作成で確実にGoogle同期
 export async function PATCH(
@@ -27,18 +18,15 @@ export async function PATCH(
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getTaskListId(taskId, client)
+    const taskListId = await getOrCreateCrmTaskList(client)
 
-    // 1. 現在のタスクを取得
+    // 現在のタスクを取得
     const current = await client.tasks.get({ tasklist: taskListId, task: taskId })
     const c = current.data
 
-    // 完了/未完了の切り替えだけの場合は、statusのみのシンプルなpatchで対応
+    // 完了/未完了トグルのみ
     if (body.status && !body.title && body.notes === undefined && body.due === undefined) {
-      const statusBody: any = {
-        id: c.id,
-        status: body.status,
-      }
+      const statusBody: any = { id: c.id, status: body.status }
       if (body.status === 'completed') {
         statusBody.completed = new Date().toISOString()
       }
@@ -58,10 +46,9 @@ export async function PATCH(
       })
     }
 
-    // 2. 編集の場合: 旧タスクを削除
+    // 編集: 旧タスク削除 → 新タスク作成
     await client.tasks.delete({ tasklist: taskListId, task: taskId })
 
-    // 3. 新しいタスクを作成
     const newTask: any = {
       title: body.title !== undefined ? body.title : c.title,
       notes: body.notes !== undefined ? body.notes : (c.notes || undefined),
@@ -80,12 +67,6 @@ export async function PATCH(
       tasklist: taskListId,
       requestBody: newTask,
     })
-
-    // 4. TaskLinkがあれば新IDに付け替え
-    await prisma.taskLink.updateMany({
-      where: { googleTaskId: taskId },
-      data: { googleTaskId: created.data.id! },
-    }).catch(() => {})
 
     return NextResponse.json({
       id: created.data.id,
@@ -119,10 +100,9 @@ export async function DELETE(
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getTaskListId(taskId, client)
+    const taskListId = await getOrCreateCrmTaskList(client)
 
     await client.tasks.delete({ tasklist: taskListId, task: taskId })
-    await prisma.taskLink.deleteMany({ where: { googleTaskId: taskId } }).catch(() => {})
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
