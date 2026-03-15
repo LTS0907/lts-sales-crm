@@ -82,6 +82,7 @@ export default function Sidebar() {
           + 名刺を追加
         </Link>
         <LogoutButton />
+        <p className="text-center text-[10px] text-gray-300 pt-1">build: {process.env.NEXT_PUBLIC_BUILD_TIME || '-'}</p>
       </div>
     </>
   )
