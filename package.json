@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "export NEXT_PUBLIC_BUILD_TIME=$(TZ=Asia/Tokyo date '+%m/%d %H:%M') && prisma generate && prisma db push --skip-generate && next build",
+    "build": "export NEXT_PUBLIC_BUILD_TIME=$(TZ=Asia/Tokyo date '+%m/%d %H:%M') && prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
