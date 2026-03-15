@@ -18,7 +18,7 @@ export async function PATCH(
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getOrCreateCrmTaskList(client)
+    const taskListId = body.taskListId || await getOrCreateCrmTaskList(client)
 
     // 現在のタスクを取得
     const current = await client.tasks.get({ tasklist: taskListId, task: taskId })
@@ -97,12 +97,13 @@ export async function DELETE(
   }
 
   const { taskId } = await params
+  const taskListId = req.nextUrl.searchParams.get('taskListId')
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getOrCreateCrmTaskList(client)
+    const resolvedListId = taskListId || await getOrCreateCrmTaskList(client)
 
-    await client.tasks.delete({ tasklist: taskListId, task: taskId })
+    await client.tasks.delete({ tasklist: resolvedListId, task: taskId })
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {

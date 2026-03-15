@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
-import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
+import { getTasksClient, getOrCreateCrmTaskList, getAllTaskLists } from '@/lib/google-tasks'
 
-// GET /api/tasks — Google Tasksの「CRM」リストをそのまま返す
+// GET /api/tasks — 全Google Tasksリストのタスクを返す
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.accessToken) {
@@ -13,26 +13,31 @@ export async function GET() {
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getOrCreateCrmTaskList(client)
+    const taskLists = await getAllTaskLists(client)
 
-    const res = await client.tasks.list({
-      tasklist: taskListId,
-      maxResults: 100,
-      showCompleted: true,
-      showHidden: true,
-    })
+    const allTasks = await Promise.all(
+      taskLists.map(async (list) => {
+        const res = await client.tasks.list({
+          tasklist: list.id,
+          maxResults: 100,
+          showCompleted: true,
+          showHidden: true,
+        })
+        return (res.data.items || []).map(t => ({
+          id: t.id,
+          title: t.title,
+          notes: t.notes,
+          status: t.status,
+          due: t.due,
+          completed: t.completed,
+          updated: t.updated,
+          taskListId: list.id,
+          taskListTitle: list.title,
+        }))
+      })
+    )
 
-    const items = (res.data.items || []).map(t => ({
-      id: t.id,
-      title: t.title,
-      notes: t.notes,
-      status: t.status,
-      due: t.due,
-      completed: t.completed,
-      updated: t.updated,
-    }))
-
-    return NextResponse.json(items)
+    return NextResponse.json(allTasks.flat())
   } catch (err: any) {
     console.error('Tasks GET error:', err)
     if (err.message?.includes('insufficient') || err.code === 403) {

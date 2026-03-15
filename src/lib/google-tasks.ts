@@ -23,3 +23,12 @@ export async function getOrCreateCrmTaskList(
   })
   return created.data.id!
 }
+
+export async function getAllTaskLists(
+  client: tasks_v1.Tasks
+): Promise<{ id: string; title: string }[]> {
+  const res = await client.tasklists.list({ maxResults: 100 })
+  return (res.data.items || [])
+    .filter(l => l.id && l.title)
+    .map(l => ({ id: l.id!, title: l.title! }))
+}

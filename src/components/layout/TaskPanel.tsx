@@ -10,6 +10,8 @@ interface GoogleTask {
   due?: string
   completed?: string
   updated?: string
+  taskListId?: string
+  taskListTitle?: string
 }
 
 export default function TaskPanel() {
@@ -65,6 +67,7 @@ export default function TaskPanel() {
   }
 
   const saveEdit = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
     setSaving(true)
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -74,6 +77,7 @@ export default function TaskPanel() {
           title: editTitle,
           notes: editNotes || '',
           due: editDue || null,
+          taskListId: task?.taskListId,
         }),
       })
       if (!res.ok) {
@@ -103,6 +107,7 @@ export default function TaskPanel() {
   }
 
   const toggleComplete = async (taskId: string, currentStatus: string) => {
+    const task = tasks.find(t => t.id === taskId)
     const newStatus = currentStatus === 'completed' ? 'needsAction' : 'completed'
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
     if (expandedId === taskId) setExpandedId(null)
@@ -110,16 +115,17 @@ export default function TaskPanel() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, taskListId: task?.taskListId }),
       })
     } catch { fetchTasks() }
   }
 
   const deleteTask = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
     setTasks(prev => prev.filter(t => t.id !== taskId))
     if (expandedId === taskId) setExpandedId(null)
     try {
-      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+      await fetch(`/api/tasks/${taskId}?taskListId=${task?.taskListId || ''}`, { method: 'DELETE' })
     } catch { fetchTasks() }
   }
 
@@ -164,7 +170,10 @@ export default function TaskPanel() {
             <p className={`text-sm leading-snug break-words ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
               {task.title}
             </p>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {task.taskListTitle && task.taskListTitle !== 'CRM' && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{task.taskListTitle}</span>
+              )}
               {task.due && !isCompleted && (() => {
                 const d = formatDue(task.due)
                 return d ? <span className={`text-xs ${d.color}`}>{d.text}</span> : null
@@ -238,7 +247,7 @@ export default function TaskPanel() {
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-gray-900">CRM タスク</span>
+          <span className="text-sm font-bold text-gray-900">タスク</span>
           {!loading && <span className="text-xs text-gray-400">{pending.length}</span>}
         </div>
         <div className="flex items-center gap-1">
