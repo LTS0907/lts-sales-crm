@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
-import { getTasksClient } from '@/lib/google-tasks'
+import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
 
 // PATCH /api/tasks/[taskId] — update task (complete/edit)
 export async function PATCH(
@@ -18,15 +18,13 @@ export async function PATCH(
   const body = await req.json()
 
   try {
-    // Find the task link to get taskListId
+    const client = getTasksClient(session.accessToken)
+
+    // TaskLinkがあればそのtaskListIdを使う、なければCRMリストを取得
     const taskLink = await prisma.taskLink.findUnique({
       where: { googleTaskId: taskId },
     })
-    if (!taskLink) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
-    }
-
-    const client = getTasksClient(session.accessToken)
+    const taskListId = taskLink?.taskListId || await getOrCreateCrmTaskList(client)
 
     const requestBody: any = {}
     if (body.status) requestBody.status = body.status
@@ -35,13 +33,12 @@ export async function PATCH(
     if (body.due !== undefined) {
       requestBody.due = body.due ? new Date(body.due).toISOString() : null
     }
-    // When completing, set completed timestamp
     if (body.status === 'completed') {
       requestBody.completed = new Date().toISOString()
     }
 
     const updated = await client.tasks.patch({
-      tasklist: taskLink.taskListId,
+      tasklist: taskListId,
       task: taskId,
       requestBody,
     })
@@ -49,6 +46,7 @@ export async function PATCH(
     return NextResponse.json({
       id: updated.data.id,
       title: updated.data.title,
+      notes: updated.data.notes,
       status: updated.data.status,
       due: updated.data.due,
       completed: updated.data.completed,
@@ -72,25 +70,23 @@ export async function DELETE(
   const { taskId } = await params
 
   try {
+    const client = getTasksClient(session.accessToken)
+
     const taskLink = await prisma.taskLink.findUnique({
       where: { googleTaskId: taskId },
     })
-    if (!taskLink) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
-    }
-
-    const client = getTasksClient(session.accessToken)
+    const taskListId = taskLink?.taskListId || await getOrCreateCrmTaskList(client)
 
     // Delete from Google Tasks
     await client.tasks.delete({
-      tasklist: taskLink.taskListId,
+      tasklist: taskListId,
       task: taskId,
     })
 
-    // Delete local link
-    await prisma.taskLink.delete({
-      where: { googleTaskId: taskId },
-    })
+    // Delete local link if exists
+    if (taskLink) {
+      await prisma.taskLink.delete({ where: { id: taskLink.id } }).catch(() => {})
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
