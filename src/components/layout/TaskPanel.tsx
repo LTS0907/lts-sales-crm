@@ -433,7 +433,7 @@ export default function TaskPanel() {
       {error && <div className="p-2 bg-red-50 text-red-600 text-xs border-b border-red-100">{error}</div>}
 
       {/* Task List */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
         {loading && tasks.length === 0 ? (
           <div className="p-4 text-center text-gray-400 text-sm animate-pulse">読み込み中...</div>
         ) : currentTasks.length === 0 ? (
@@ -536,7 +536,7 @@ export default function TaskPanel() {
       )}
 
       {!collapsed && (
-        <aside className="hidden md:flex w-64 bg-white border-l border-gray-200 flex-col flex-shrink-0 overflow-hidden">
+        <aside className="hidden md:flex w-64 h-full bg-white border-l border-gray-200 flex-col flex-shrink-0 overflow-hidden">
           {panelContent}
         </aside>
       )}
