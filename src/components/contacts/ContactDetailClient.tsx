@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react'
 import { parseRelationships } from '@/lib/relationship-parser'
 import ServiceProgressStepper from '@/components/crm/ServiceProgressStepper'
 import InvoiceModal from './InvoiceModal'
+import TaskModal from './TaskModal'
+import TaskList from '@/components/tasks/TaskList'
 
 interface GmailMessage {
   id: string
@@ -83,7 +85,7 @@ function NoteText({ text, contacts }: { text: string; contacts: { id: string; na
 export default function ContactDetailClient({ contact, allContacts }: { contact: any; allContacts: { id: string; name: string }[] }) {
   const router = useRouter()
   const { data: session } = useSession()
-  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'>('notes')
+  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'|'tasks'>('notes')
   const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([])
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailError, setGmailError] = useState<string | null>(null)
@@ -114,6 +116,9 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     Object.fromEntries((contact.servicePhases || []).map((sp: any) => [sp.service, sp.phase]))
   )
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [contactTasks, setContactTasks] = useState<any[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
 
   const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -224,6 +229,37 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     await fetch(`/api/contacts/${contact.id}`, { method: 'DELETE' }); router.push('/contacts')
   }
 
+  const fetchContactTasks = async () => {
+    setTasksLoading(true)
+    try {
+      const res = await fetch(`/api/tasks?contactId=${contact.id}`)
+      if (res.ok) setContactTasks(await res.json())
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err)
+    } finally {
+      setTasksLoading(false)
+    }
+  }
+
+  const toggleTaskComplete = async (taskId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'completed' ? 'needsAction' : 'completed'
+    setContactTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+    } catch { fetchContactTasks() }
+  }
+
+  const deleteTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+      setContactTasks(prev => prev.filter(t => t.id !== taskId))
+    } catch (err) { console.error('Delete failed:', err) }
+  }
+
   const fetchGmailHistory = async () => {
     if (!contact.email) return
     setGmailLoading(true)
@@ -254,6 +290,13 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       fetchGmailHistory()
     }
   }, [tab, session?.accessToken, contact.email])
+
+  // Fetch tasks when tasks tab is opened
+  useEffect(() => {
+    if (tab === 'tasks' && session?.accessToken && contactTasks.length === 0 && !tasksLoading) {
+      fetchContactTasks()
+    }
+  }, [tab, session?.accessToken])
 
   const statusInfo = EMAIL_STATUS.find(s => s.value === emailStatus) || EMAIL_STATUS[0]
 
@@ -318,6 +361,12 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
             </div>
             <div className="flex gap-2 flex-shrink-0">
               <button
+                onClick={() => setTaskModalOpen(true)}
+                className="px-2 md:px-3 py-1 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50"
+              >
+                ✅ タスク
+              </button>
+              <button
                 onClick={() => setInvoiceModalOpen(true)}
                 className="px-2 md:px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
               >
@@ -372,7 +421,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-5 -mx-4 md:mx-0">
         <div className="flex gap-0 overflow-x-auto px-4 md:px-0">
-          {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ']].map(([key, label]) => (
+          {[['notes','メモ・記録'],['exchanges','やりとり'],['tasks','タスク'],['crm','営業CRM'],['ai','AIまとめ']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key as any)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {label}
@@ -530,6 +579,36 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tasks Tab */}
+      {tab === 'tasks' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">タスク</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={fetchContactTasks}
+                disabled={tasksLoading}
+                className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {tasksLoading ? '更新中...' : '更新'}
+              </button>
+              <button
+                onClick={() => setTaskModalOpen(true)}
+                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                + タスク追加
+              </button>
+            </div>
+          </div>
+          <TaskList
+            tasks={contactTasks}
+            loading={tasksLoading}
+            onToggleComplete={toggleTaskComplete}
+            onDelete={deleteTask}
+          />
         </div>
       )}
 
@@ -781,6 +860,15 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           </div>
         </div>
       )}
+
+      {/* Task Modal */}
+      <TaskModal
+        isOpen={taskModalOpen}
+        onClose={() => setTaskModalOpen(false)}
+        contactId={contact.id}
+        contactName={contact.name}
+        onTaskCreated={fetchContactTasks}
+      />
 
       {/* Invoice Modal */}
       <InvoiceModal

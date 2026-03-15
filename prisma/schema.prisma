@@ -54,6 +54,7 @@ model Contact {
   meetings      MeetingParticipant[]
   followUpLogs  FollowUpLog[]
   servicePhases ServicePhase[]
+  taskLinks     TaskLink[]
 }
 
 model ServicePhase {
@@ -127,6 +128,17 @@ model GroupMember {
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@id([groupId, contactId])
+}
+
+model TaskLink {
+  id           String   @id @default(cuid())
+  googleTaskId String   @unique
+  taskListId   String
+  contactId    String
+  presetLabel  String?
+  createdAt    DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
 
 model FollowUpLog {
