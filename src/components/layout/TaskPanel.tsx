@@ -205,7 +205,37 @@ export default function TaskPanel() {
   const [editNotes, setEditNotes] = useState('')
   const [editDue, setEditDue] = useState('')
   const [saving, setSaving] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(256)
+  const isResizing = useRef(false)
   const tabsRef = useRef<HTMLDivElement>(null)
+
+  // リサイズハンドル
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startWidth = panelWidth
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = startX - e.clientX
+      const newWidth = Math.min(600, Math.max(180, startWidth + delta))
+      setPanelWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      isResizing.current = false
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [panelWidth])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -538,7 +568,16 @@ export default function TaskPanel() {
       )}
 
       {!collapsed && (
-        <aside className="hidden md:block w-64 h-screen bg-white border-l border-gray-200 flex-shrink-0 overflow-hidden">
+        <aside
+          className="hidden md:block h-screen bg-white border-l border-gray-200 flex-shrink-0 overflow-hidden relative"
+          style={{ width: panelWidth }}
+        >
+          {/* リサイズハンドル */}
+          <div
+            onMouseDown={startResize}
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400 active:bg-blue-500 transition-colors z-20"
+            title="ドラッグで幅を変更"
+          />
           {panelContent}
         </aside>
       )}
