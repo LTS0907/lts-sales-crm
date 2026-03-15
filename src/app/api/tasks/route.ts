@@ -15,18 +15,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const client = getTasksClient(session.accessToken)
-    const taskListId = await getOrCreateCrmTaskList(client)
 
-    // Get all tasks from CRM list
-    const res = await client.tasks.list({
-      tasklist: taskListId,
-      maxResults: 100,
-      showCompleted: true,
-      showHidden: true,
-    })
-    const googleTasks = res.data.items || []
-
-    // Get TaskLinks for mapping
+    // Get TaskLinks from DB
     const where: any = {}
     if (contactId) where.contactId = contactId
     const taskLinks = await prisma.taskLink.findMany({
@@ -34,31 +24,45 @@ export async function GET(req: NextRequest) {
       include: { contact: { select: { id: true, name: true, company: true } } },
     })
 
-    const linkMap = new Map(taskLinks.map(tl => [tl.googleTaskId, tl]))
+    if (taskLinks.length === 0) {
+      return NextResponse.json([])
+    }
 
-    // Merge Google Tasks with local links
-    const tasks = googleTasks
-      .filter(gt => linkMap.has(gt.id!))
-      .map(gt => {
-        const link = linkMap.get(gt.id!)!
-        return {
-          id: gt.id,
-          title: gt.title,
-          notes: gt.notes,
-          status: gt.status, // 'needsAction' or 'completed'
-          due: gt.due,
-          completed: gt.completed,
-          updated: gt.updated,
-          taskListId,
-          contactId: link.contactId,
-          contactName: link.contact.name,
-          contactCompany: link.contact.company,
-          presetLabel: link.presetLabel,
-          linkId: link.id,
+    // Fetch each task individually from Google Tasks using stored IDs
+    const tasks = await Promise.all(
+      taskLinks.map(async (tl) => {
+        try {
+          const res = await client.tasks.get({
+            tasklist: tl.taskListId,
+            task: tl.googleTaskId,
+          })
+          const gt = res.data
+          return {
+            id: gt.id,
+            title: gt.title,
+            notes: gt.notes,
+            status: gt.status,
+            due: gt.due,
+            completed: gt.completed,
+            updated: gt.updated,
+            taskListId: tl.taskListId,
+            contactId: tl.contactId,
+            contactName: tl.contact.name,
+            contactCompany: tl.contact.company,
+            presetLabel: tl.presetLabel,
+            linkId: tl.id,
+          }
+        } catch (err: any) {
+          // Task was deleted from Google Tasks — clean up the orphaned link
+          if (err.code === 404) {
+            await prisma.taskLink.delete({ where: { id: tl.id } }).catch(() => {})
+          }
+          return null
         }
       })
+    )
 
-    return NextResponse.json(tasks)
+    return NextResponse.json(tasks.filter(Boolean))
   } catch (err: any) {
     console.error('Tasks GET error:', err)
     if (err.message?.includes('insufficient') || err.code === 403) {
