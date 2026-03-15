@@ -25,10 +25,10 @@ export default function EmailsClient({ contacts: initial }: { contacts: any[] })
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-5">メール管理</h1>
+    <div className="p-4 md:p-6">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-5">メール管理</h1>
 
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-5 flex-wrap">
         {[{ value: 'ALL', label: `すべて (${contacts.length})` }, ...STATUSES.map(s => ({ value: s.value, label: `${s.label} (${contacts.filter(c => c.emailStatus === s.value).length})` }))].map(f => (
           <button key={f.value} onClick={() => setFilter(f.value)}
             className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${filter === f.value ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>

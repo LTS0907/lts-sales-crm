@@ -20,8 +20,8 @@ export default async function PipelinePage() {
   const contacts = await prisma.contact.findMany({ orderBy: { updatedAt: 'desc' } })
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-5">パイプライン</h1>
+    <div className="p-4 md:p-6">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-5">パイプライン</h1>
       <div className="overflow-x-auto">
         <div className="flex gap-4 min-w-max pb-4">
           {PHASES.map(phase => {

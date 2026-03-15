@@ -58,7 +58,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-4 md:p-8 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">検索</h1>
 
       <div className="flex gap-2 mb-6">

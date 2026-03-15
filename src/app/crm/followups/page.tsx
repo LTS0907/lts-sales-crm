@@ -14,8 +14,8 @@ export default async function FollowupsPage() {
   ])
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-5">フォローアップ</h1>
+    <div className="p-4 md:p-6">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-5">フォローアップ</h1>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <Section title="⚠️ 期限超過" contacts={overdue} badgeColor="bg-red-100 text-red-700" emptyText="期限超過なし" />
         <Section title="🔔 今週中" contacts={upcoming} badgeColor="bg-yellow-100 text-yellow-700" emptyText="今週の予定なし" />

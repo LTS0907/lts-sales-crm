@@ -288,7 +288,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
       {/* Back Button */}
       <button
         onClick={() => router.back()}
@@ -299,32 +299,32 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       </button>
 
       {/* Header */}
-      <div className="flex items-start gap-5 mb-6">
-        <div className="relative">
-          <div className="w-20 h-20 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-2xl overflow-hidden border-2 border-blue-200">
+      <div className="flex items-start gap-3 md:gap-5 mb-6">
+        <div className="relative flex-shrink-0">
+          <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xl md:text-2xl overflow-hidden border-2 border-blue-200">
             {photoPath ? <img src={photoPath} className="w-full h-full object-cover" /> : contact.name.charAt(0)}
           </div>
           <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-white border border-gray-200 rounded-full flex items-center justify-center cursor-pointer hover:bg-gray-50 text-sm">
             📷<input type="file" accept="image/*" className="hidden" onChange={uploadPhoto} />
           </label>
         </div>
-        <div className="flex-1">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{contact.name}</h1>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 truncate">{contact.name}</h1>
               {contact.nameKana && <p className="text-xs text-gray-400">{contact.nameKana}</p>}
-              {contact.title && <p className="text-sm text-gray-600">{contact.title}</p>}
-              {contact.company && <p className="text-sm font-medium text-blue-600">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}
+              {contact.title && <p className="text-sm text-gray-600 truncate">{contact.title}</p>}
+              {contact.company && <p className="text-sm font-medium text-blue-600 truncate">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={() => setInvoiceModalOpen(true)}
-                className="px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
+                className="px-2 md:px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
               >
                 📄 見積/請求
               </button>
-              <Link href={`/contacts/${contact.id}/edit`} className="px-3 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">編集</Link>
-              <button onClick={deleteContact} className="px-3 py-1 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">削除</button>
+              <Link href={`/contacts/${contact.id}/edit`} className="px-2 md:px-3 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">編集</Link>
+              <button onClick={deleteContact} className="px-2 md:px-3 py-1 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">削除</button>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
@@ -370,11 +370,11 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       )}
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-5">
-        <div className="flex gap-0">
+      <div className="border-b border-gray-200 mb-5 -mx-4 md:mx-0">
+        <div className="flex gap-0 overflow-x-auto px-4 md:px-0">
           {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key as any)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {label}
             </button>
           ))}
@@ -562,7 +562,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           )}
 
           {/* Phase & Status */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <h3 className="text-xs font-semibold text-gray-500 mb-3">営業フェーズ</h3>
               <select value={salesPhase} onChange={async e => { setSalesPhase(e.target.value); await updateCRM('salesPhase', e.target.value) }}

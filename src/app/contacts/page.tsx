@@ -14,9 +14,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   })
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-gray-900">名刺一覧</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">名刺一覧</h1>
         <Link href="/contacts/new" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
           + 名刺を追加
         </Link>

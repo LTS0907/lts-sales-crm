@@ -357,35 +357,35 @@ export default function CalendarPage() {
   })
 
   return (
-    <div className="p-6 h-full flex flex-col">
+    <div className="p-4 md:p-6 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-900">Googleカレンダー</h1>
-          <span className="text-sm text-gray-500">{session.user?.email}</span>
+        <div className="flex items-center gap-2 md:gap-4 min-w-0">
+          <h1 className="text-lg md:text-xl font-bold text-gray-900 whitespace-nowrap">Googleカレンダー</h1>
+          <span className="text-xs md:text-sm text-gray-500 truncate hidden sm:inline">{session.user?.email}</span>
         </div>
         <button
           onClick={() => signOut()}
-          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
         >
           ログアウト
         </button>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4 flex-shrink-0">
+        <div className="flex items-center gap-1 md:gap-2 flex-wrap">
           <button
             onClick={goToToday}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-2 md:px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             今日
           </button>
           <button onClick={navigatePrev} className="p-2 hover:bg-gray-100 rounded-lg">←</button>
           <button onClick={navigateNext} className="p-2 hover:bg-gray-100 rounded-lg">→</button>
-          <h2 className="font-semibold text-gray-900 ml-2">
+          <h2 className="font-semibold text-gray-900 ml-1 md:ml-2 text-sm md:text-base">
             {viewMode === 'day' && format(currentDate, 'yyyy年M月d日（E）', { locale: ja })}
-            {viewMode === 'week' && `${format(weekDays[0], 'yyyy年M月d日', { locale: ja })} - ${format(weekDays[6], 'M月d日', { locale: ja })}`}
+            {viewMode === 'week' && `${format(weekDays[0], 'M/d', { locale: ja })} - ${format(weekDays[6], 'M/d', { locale: ja })}`}
             {viewMode === 'month' && format(currentDate, 'yyyy年M月', { locale: ja })}
           </h2>
         </div>
@@ -535,7 +535,7 @@ function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEven
             <button
               key={day.toISOString()}
               onClick={() => setSelectedDate(day)}
-              className={`min-h-[80px] p-1 rounded-lg text-left transition-colors ${
+              className={`min-h-[60px] md:min-h-[80px] p-1 rounded-lg text-left transition-colors ${
                 isSelected
                   ? 'bg-blue-600 text-white'
                   : isToday

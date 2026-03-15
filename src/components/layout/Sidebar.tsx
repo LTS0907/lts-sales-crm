@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import LogoutButton from './LogoutButton'
 
 const nav = [
@@ -23,9 +24,25 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const [open, setOpen] = useState(false)
 
-  return (
-    <aside className="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+  // ページ遷移時にメニューを閉じる
+  useEffect(() => {
+    setOpen(false)
+  }, [pathname])
+
+  // メニュー開いてるときにbodyスクロールを止める
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [open])
+
+  const sidebarContent = (
+    <>
       <Link href="/" className="block p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors">
         <h1 className="text-base font-bold text-gray-900">名刺管理 + CRM</h1>
         <p className="text-xs text-gray-400 mt-0.5">営業支援システム</p>
@@ -65,6 +82,51 @@ export default function Sidebar() {
         </Link>
         <LogoutButton />
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* モバイルヘッダー */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 flex items-center justify-between px-4 h-14">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="p-2 -ml-2 rounded-lg hover:bg-gray-100 text-gray-700"
+          aria-label="メニュー"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {open ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+        <span className="text-sm font-bold text-gray-900">名刺管理 + CRM</span>
+        <Link href="/contacts/new" className="p-2 -mr-2 text-blue-600 text-sm font-medium">+ 追加</Link>
+      </div>
+
+      {/* モバイルオーバーレイ */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-40 mt-14"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* モバイルドロワー */}
+      <aside
+        className={`md:hidden fixed top-14 left-0 bottom-0 w-64 bg-white z-50 flex flex-col transform transition-transform duration-200 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* デスクトップサイドバー（従来通り） */}
+      <aside className="hidden md:flex w-60 bg-white border-r border-gray-200 flex-col flex-shrink-0">
+        {sidebarContent}
+      </aside>
+    </>
   )
 }
