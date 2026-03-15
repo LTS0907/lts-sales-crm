@@ -12,7 +12,7 @@ async function getTaskListId(taskId: string, client: any) {
   return getOrCreateCrmTaskList(client)
 }
 
-// PATCH /api/tasks/[taskId]
+// PATCH /api/tasks/[taskId] — 削除→再作成で確実にGoogle同期
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
@@ -29,51 +29,72 @@ export async function PATCH(
     const client = getTasksClient(session.accessToken)
     const taskListId = await getTaskListId(taskId, client)
 
-    // 現在のタスクを取得
+    // 1. 現在のタスクを取得
     const current = await client.tasks.get({ tasklist: taskListId, task: taskId })
     const c = current.data
 
-    // 更新可能なフィールドだけを構築
-    const requestBody: any = {
-      id: c.id,
-      title: body.title !== undefined ? body.title : c.title,
-      notes: body.notes !== undefined ? body.notes : (c.notes || ''),
-      status: body.status !== undefined ? body.status : c.status,
-    }
-
-    // 期限
-    if (body.due !== undefined) {
-      if (body.due) {
-        requestBody.due = new Date(body.due).toISOString()
+    // 完了/未完了の切り替えだけの場合は、statusのみのシンプルなpatchで対応
+    if (body.status && !body.title && body.notes === undefined && body.due === undefined) {
+      const statusBody: any = {
+        id: c.id,
+        status: body.status,
       }
-      // due=null の場合はフィールドを含めない（期限削除）
+      if (body.status === 'completed') {
+        statusBody.completed = new Date().toISOString()
+      }
+      const updated = await client.tasks.patch({
+        tasklist: taskListId,
+        task: taskId,
+        requestBody: statusBody,
+      })
+      return NextResponse.json({
+        id: updated.data.id,
+        title: updated.data.title,
+        notes: updated.data.notes,
+        status: updated.data.status,
+        due: updated.data.due,
+        completed: updated.data.completed,
+        updated: updated.data.updated,
+      })
+    }
+
+    // 2. 編集の場合: 旧タスクを削除
+    await client.tasks.delete({ tasklist: taskListId, task: taskId })
+
+    // 3. 新しいタスクを作成
+    const newTask: any = {
+      title: body.title !== undefined ? body.title : c.title,
+      notes: body.notes !== undefined ? body.notes : (c.notes || undefined),
+      status: body.status || c.status || 'needsAction',
+    }
+    if (body.due !== undefined) {
+      if (body.due) newTask.due = new Date(body.due).toISOString()
     } else if (c.due) {
-      requestBody.due = c.due
+      newTask.due = c.due
+    }
+    if (newTask.status === 'completed') {
+      newTask.completed = c.completed || new Date().toISOString()
     }
 
-    // 完了
-    if (body.status === 'completed') {
-      requestBody.completed = new Date().toISOString()
-    } else if (body.status === 'needsAction') {
-      // completedを含めない
-    } else if (c.completed) {
-      requestBody.completed = c.completed
-    }
-
-    const updated = await client.tasks.update({
+    const created = await client.tasks.insert({
       tasklist: taskListId,
-      task: taskId,
-      requestBody,
+      requestBody: newTask,
     })
 
+    // 4. TaskLinkがあれば新IDに付け替え
+    await prisma.taskLink.updateMany({
+      where: { googleTaskId: taskId },
+      data: { googleTaskId: created.data.id! },
+    }).catch(() => {})
+
     return NextResponse.json({
-      id: updated.data.id,
-      title: updated.data.title,
-      notes: updated.data.notes,
-      status: updated.data.status,
-      due: updated.data.due,
-      completed: updated.data.completed,
-      updated: updated.data.updated,
+      id: created.data.id,
+      title: created.data.title,
+      notes: created.data.notes,
+      status: created.data.status,
+      due: created.data.due,
+      completed: created.data.completed,
+      updated: created.data.updated,
     })
   } catch (err: any) {
     console.error('Tasks PATCH error:', err?.response?.data || err.message || err)
@@ -101,7 +122,6 @@ export async function DELETE(
     const taskListId = await getTaskListId(taskId, client)
 
     await client.tasks.delete({ tasklist: taskListId, task: taskId })
-
     await prisma.taskLink.deleteMany({ where: { googleTaskId: taskId } }).catch(() => {})
 
     return NextResponse.json({ ok: true })
