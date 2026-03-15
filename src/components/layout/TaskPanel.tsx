@@ -374,66 +374,68 @@ export default function TaskPanel() {
   const totalPending = tasks.filter(t => t.status === 'needsAction').length
 
   const panelContent = (
-    <div className="flex flex-col h-full">
+    <div className="overflow-y-scroll h-full" style={{ overscrollBehavior: 'contain' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-gray-900">タスク</span>
-          {!loading && <span className="text-xs text-gray-400">{totalPending}</span>}
+      <div className="sticky top-0 z-10 bg-white">
+        <div className="flex items-center justify-between p-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-gray-900">タスク</span>
+            {!loading && <span className="text-xs text-gray-400">{totalPending}</span>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={fetchTasks} disabled={loading} className="p-1 text-gray-400 hover:text-gray-600 rounded disabled:opacity-50" title="更新">
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button onClick={() => setCollapsed(true)} className="hidden md:block p-1 text-gray-400 hover:text-gray-600 rounded" title="閉じる">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded">✕</button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={fetchTasks} disabled={loading} className="p-1 text-gray-400 hover:text-gray-600 rounded disabled:opacity-50" title="更新">
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
-          <button onClick={() => setCollapsed(true)} className="hidden md:block p-1 text-gray-400 hover:text-gray-600 rounded" title="閉じる">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
-            </svg>
-          </button>
-          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded">✕</button>
-        </div>
+
+        {/* タブバー */}
+        {taskLists.length > 1 && (
+          <div
+            ref={tabsRef}
+            className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {taskLists.map(list => {
+              const listPending = tasks.filter(t => t.taskListId === list.id && t.status === 'needsAction').length
+              const isActive = activeListId === list.id
+              return (
+                <button
+                  key={list.id}
+                  onClick={() => { setActiveListId(list.id); setExpandedId(null) }}
+                  className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-500 text-blue-600 bg-white'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {list.title}
+                  {listPending > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                      isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
+                    }`}>
+                      {listPending}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {error && <div className="p-2 bg-red-50 text-red-600 text-xs border-b border-red-100">{error}</div>}
       </div>
 
-      {/* タブバー */}
-      {taskLists.length > 1 && (
-        <div
-          ref={tabsRef}
-          className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto scrollbar-hide"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {taskLists.map(list => {
-            const listPending = tasks.filter(t => t.taskListId === list.id && t.status === 'needsAction').length
-            const isActive = activeListId === list.id
-            return (
-              <button
-                key={list.id}
-                onClick={() => { setActiveListId(list.id); setExpandedId(null) }}
-                className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-blue-500 text-blue-600 bg-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {list.title}
-                {listPending > 0 && (
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
-                    isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {listPending}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {error && <div className="p-2 bg-red-50 text-red-600 text-xs border-b border-red-100">{error}</div>}
-
-      {/* Task List */}
-      <div className="flex-1 min-h-0 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+      {/* Task List — 全体をスクロール可能にし、ヘッダー/タブはstickyで固定 */}
+      <div>
         {loading && tasks.length === 0 ? (
           <div className="p-4 text-center text-gray-400 text-sm animate-pulse">読み込み中...</div>
         ) : currentTasks.length === 0 ? (
@@ -536,7 +538,7 @@ export default function TaskPanel() {
       )}
 
       {!collapsed && (
-        <aside className="hidden md:flex w-64 h-full bg-white border-l border-gray-200 flex-col flex-shrink-0 overflow-hidden">
+        <aside className="hidden md:block w-64 h-screen bg-white border-l border-gray-200 flex-shrink-0 overflow-hidden">
           {panelContent}
         </aside>
       )}
