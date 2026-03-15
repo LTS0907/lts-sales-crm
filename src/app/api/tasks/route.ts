@@ -31,13 +31,17 @@ export async function GET() {
           due: t.due,
           completed: t.completed,
           updated: t.updated,
+          position: t.position,
           taskListId: list.id,
           taskListTitle: list.title,
         }))
       })
     )
 
-    return NextResponse.json(allTasks.flat())
+    return NextResponse.json({
+      taskLists,
+      tasks: allTasks.flat(),
+    })
   } catch (err: any) {
     console.error('Tasks GET error:', err)
     if (err.message?.includes('insufficient') || err.code === 403) {
