@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { PRESET_TASKS } from '@/lib/google-tasks'
+import { PRESET_TASKS } from '@/lib/task-presets'
 
 interface TaskModalProps {
   isOpen: boolean
