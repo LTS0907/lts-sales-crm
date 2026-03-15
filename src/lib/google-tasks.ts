@@ -28,7 +28,11 @@ export async function getAllTaskLists(
   client: tasks_v1.Tasks
 ): Promise<{ id: string; title: string }[]> {
   const res = await client.tasklists.list({ maxResults: 100 })
-  return (res.data.items || [])
+  const lists = (res.data.items || [])
     .filter(l => l.id && l.title)
     .map(l => ({ id: l.id!, title: l.title! }))
+  // CRMリストを先頭に
+  const crm = lists.filter(l => l.title === CRM_LIST_TITLE)
+  const others = lists.filter(l => l.title !== CRM_LIST_TITLE)
+  return [...crm, ...others]
 }
