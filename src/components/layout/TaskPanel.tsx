@@ -67,24 +67,33 @@ export default function TaskPanel() {
   const saveEdit = async (taskId: string) => {
     setSaving(true)
     try {
-      const body: any = { title: editTitle }
-      body.notes = editNotes || ''
-      body.due = editDue || null
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          title: editTitle,
+          notes: editNotes || '',
+          due: editDue || null,
+        }),
       })
-      // ローカル反映
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '保存に失敗しました')
+      }
+      // APIレスポンス（Google Tasksの実際の値）でローカルを更新
+      const updated = await res.json()
       setTasks(prev => prev.map(t => t.id === taskId ? {
         ...t,
-        title: editTitle,
-        notes: editNotes || undefined,
-        due: editDue ? new Date(editDue).toISOString() : undefined,
+        title: updated.title,
+        notes: updated.notes,
+        due: updated.due,
+        status: updated.status,
+        completed: updated.completed,
+        updated: updated.updated,
       } : t))
       setExpandedId(null)
-    } catch {
-      alert('保存に失敗しました')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '保存に失敗しました')
     } finally {
       setSaving(false)
     }
