@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     const fileInfo = await drive.files.get({
       fileId: spreadsheetId,
       fields: 'name',
+      supportsAllDrives: true,
     })
     const fileName = fileInfo.data.name || 'document'
 
