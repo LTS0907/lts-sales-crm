@@ -92,8 +92,8 @@ export async function POST(request: Request) {
     const updates: { range: string; values: (string | number)[][] }[] = [
       // Title (A2) - 請求書 or 見積書（A2:D2結合、親=A2）
       { range: 'A2', values: [[type === 'invoice' ? '請　求　書' : '見　積　書']] },
-      // Issue date (E4) - 右側エリアはE列から始まる
-      { range: 'E4', values: [[`発行年月日：${formattedDate}`]] },
+      // Issue date (F4) - F4:I4結合、親=F4
+      { range: 'F4', values: [[`発行年月日：${formattedDate}`]] },
       // Company name (A5) - A5:D6結合、親=A5（確認済み）
       { range: 'A5', values: [[`${companyName}様`]] },
       // Subject (A8) - A8:D8結合、親=A8（確認済み）
@@ -103,24 +103,19 @@ export async function POST(request: Request) {
     ]
 
     // Add line items (starting from row 16)
-    // 列構成: A=日付, B=作業内容(B:D結合・親B), C/D=スレーブ, E=数量(確認済み), F=単位, G=単価, H=空, I=金額
+    // 列構成: A=日付, B=作業内容(B:D結合・親B), C/D=スレーブ, E=数量, F=単位, G=単価, H=計算式（触らない）, I=金額
     items.forEach((item, index) => {
       const row = 16 + index
       if (row <= 35) { // Max 20 items (rows 16-35)
-        updates.push({
-          range: `A${row}:I${row}`,
-          values: [[
-            item.date,        // A: 日付
-            item.description, // B: 作業内容（B:D結合の親セル）
-            '',               // C: スレーブ（無視される）
-            '',               // D: スレーブ（無視される）
-            item.quantity,    // E: 数量（E15で確認済み）
-            item.unit,        // F: 単位
-            `¥${item.unitPrice.toLocaleString()}`, // G: 単価
-            '',               // H: 空
-            `¥${(item.quantity * item.unitPrice).toLocaleString()}`, // I: 金額
-          ]],
-        })
+        // H列はテンプレートに計算式が入っているためnullで上書きしない
+        updates.push(
+          { range: `A${row}`, values: [[item.date]] },
+          { range: `B${row}`, values: [[item.description]] },
+          { range: `E${row}`, values: [[item.quantity]] },
+          { range: `F${row}`, values: [[item.unit]] },
+          { range: `G${row}`, values: [[item.unitPrice]] },
+          { range: `I${row}`, values: [[item.quantity * item.unitPrice]] },
+        )
       }
     })
 
