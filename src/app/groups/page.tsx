@@ -6,7 +6,7 @@ import Link from 'next/link'
 export default async function GroupsPage() {
   const groups = await prisma.group.findMany({
     include: {
-      members: { include: { contact: true } },
+      GroupMember: { include: { Contact: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -43,25 +43,25 @@ export default async function GroupsPage() {
                 </span>
               </div>
               <div className="space-y-1">
-                {group.members.map(m => (
+                {group.GroupMember.map(m => (
                   <Link
                     key={m.contactId}
                     href={`/contacts/${m.contactId}`}
                     className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded-lg px-1"
                   >
                     <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs text-blue-700 font-medium overflow-hidden flex-shrink-0">
-                      {m.contact.photoPath ? (
-                        <img src={m.contact.photoPath} alt={m.contact.name} className="w-full h-full object-cover" />
+                      {m.Contact.photoPath ? (
+                        <img src={m.Contact.photoPath} alt={m.Contact.name} className="w-full h-full object-cover" />
                       ) : (
-                        m.contact.name.charAt(0)
+                        m.Contact.name.charAt(0)
                       )}
                     </div>
-                    <span className="text-sm text-gray-700">{m.contact.name}</span>
+                    <span className="text-sm text-gray-700">{m.Contact.name}</span>
                   </Link>
                 ))}
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-400">{group.members.length}名のメンバー</p>
+                <p className="text-xs text-gray-400">{group.GroupMember.length}名のメンバー</p>
               </div>
             </div>
           ))}

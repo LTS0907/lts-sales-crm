@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const contact = await prisma.contact.findUnique({ where: { id }, include: { notes: { orderBy: { createdAt: 'desc' } }, exchanges: { orderBy: { createdAt: 'desc' } }, meetings: { include: { meeting: true } }, groupMembers: { include: { group: true } }, servicePhases: true } })
+  const contact = await prisma.contact.findUnique({ where: { id }, include: { Note: { orderBy: { createdAt: 'desc' } }, Exchange: { orderBy: { createdAt: 'desc' } }, MeetingParticipant: { include: { Meeting: true } }, GroupMember: { include: { Group: true } }, ServicePhase: true } })
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(contact)
 }

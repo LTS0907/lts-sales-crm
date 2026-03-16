@@ -203,7 +203,7 @@ function ContactCard({ contact }: { contact: any }) {
           </div>
         )}
         <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-          {contact._count?.notes > 0 && <span>📝 {contact._count.notes}件</span>}
+          {contact._count?.Note > 0 && <span>📝 {contact._count.Note}件</span>}
           {contact.connectionType && CONNECTION_LABELS[contact.connectionType] && (
             <span>{CONNECTION_LABELS[contact.connectionType].icon} {CONNECTION_LABELS[contact.connectionType].label}</span>
           )}

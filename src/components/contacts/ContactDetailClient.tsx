@@ -89,8 +89,8 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [gmailError, setGmailError] = useState<string | null>(null)
   const [selectedEmail, setSelectedEmail] = useState<GmailFullMessage | null>(null)
   const [emailModalLoading, setEmailModalLoading] = useState(false)
-  const [notes, setNotes] = useState(contact.notes)
-  const [exchanges, setExchanges] = useState(contact.exchanges)
+  const [notes, setNotes] = useState(contact.Note)
+  const [exchanges, setExchanges] = useState(contact.Exchange)
   const [photoPath, setPhotoPath] = useState(contact.photoPath)
   const [newNote, setNewNote] = useState(''); const [noteCat, setNoteCat] = useState('GENERAL')
   const [newExchange, setNewExchange] = useState(''); const [exchDir, setExchDir] = useState('THEY_DID_FOR_ME')
@@ -111,7 +111,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [loadingCompany, setLoadingCompany] = useState(false)
   const [cardImageOpen, setCardImageOpen] = useState(false)
   const [servicePhaseMap, setServicePhaseMap] = useState<Record<string, string>>(
-    Object.fromEntries((contact.servicePhases || []).map((sp: any) => [sp.service, sp.phase]))
+    Object.fromEntries((contact.ServicePhase || []).map((sp: any) => [sp.service, sp.phase]))
   )
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
 

@@ -50,7 +50,7 @@ export default async function Dashboard() {
       },
     }),
     prisma.servicePhase.findMany({
-      include: { contact: { select: { id: true, name: true, company: true } } },
+      include: { Contact: { select: { id: true, name: true, company: true } } },
     }),
   ])
 

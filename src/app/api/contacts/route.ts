@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const contacts = await prisma.contact.findMany({
     where: q ? { OR: [{ name: { contains: q } }, { company: { contains: q } }] } : undefined,
     orderBy: { updatedAt: 'desc' },
-    include: { _count: { select: { notes: true } } },
+    include: { _count: { select: { Note: true } } },
   })
   return NextResponse.json(contacts)
 }
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const data = await request.json()
   const contact = await prisma.contact.create({
-    data: { name: data.name, nameKana: data.nameKana, connectionType: data.connectionType || null, company: data.company, department: data.department, title: data.title, email: data.email, phone: data.phone, lineId: data.lineId, gmailAlias: data.gmailAlias, website: data.website, address: data.address, episodeMemo: data.episodeMemo },
+    data: { id: data.id || crypto.randomUUID(), updatedAt: new Date(), name: data.name, nameKana: data.nameKana, connectionType: data.connectionType || null, company: data.company, department: data.department, title: data.title, email: data.email, phone: data.phone, lineId: data.lineId, gmailAlias: data.gmailAlias, website: data.website, address: data.address, episodeMemo: data.episodeMemo },
   })
   let groupSuggestion = null
   if (contact.company) {
