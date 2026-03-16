@@ -128,7 +128,7 @@ export default function EmailSyncPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col">
+    <div className="p-6 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <div>

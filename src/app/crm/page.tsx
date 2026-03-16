@@ -26,8 +26,8 @@ export default async function CRMDashboard() {
   ]
 
   return (
-    <div className="p-4 md:p-6">
-      <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-5">CRMダッシュボード</h1>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold text-gray-900 mb-5">CRMダッシュボード</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {metrics.map(m => {

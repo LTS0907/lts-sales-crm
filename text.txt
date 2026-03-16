@@ -1,0 +1,38 @@
+---                                                                                                                               
+  scripts-root 同期確認手順                                       
+                                                                                                                                    
+  1. 現在の状態を確認                                                                                                               
+
+  cd D:\scripts
+  git remote -v
+  git branch
+  git status
+
+  2. リモートの最新を取得して差分を確認
+
+  git fetch origin
+  git log --oneline origin/master..HEAD
+  git log --oneline HEAD..origin/master
+
+  - 1行目の結果 → ローカルにあってリモートにないコミット（未push）
+  - 2行目の結果 → リモートにあってローカルにないコミット（未pull）
+  - 両方とも出力なし → 同期済み
+
+  3. 差分があった場合はpullで同期
+
+  git pull origin master
+
+  4. CLAUDE.mdの内容を確認
+
+  type D:\scripts\CLAUDE.md
+
+  タイトルが「LTS Scripts — 全プロジェクト共通ルール」になっていれば最新版です。
+  「龍竹一生 経営ダッシュボード ルールブック」になっていたら古い版です。
+
+  ---
+  補足情報（現在のMacの状態）
+
+  - リポジトリ: https://github.com/LTS0907/scripts-root.git
+  - リモートブランチ: master
+  - 最新コミット: bad6d4a merge: scripts-rootリモートと同期（コンフリクト解消）
+  - CLAUDE.md: リモート版（全プロジェクト共通ルール）を採用済み

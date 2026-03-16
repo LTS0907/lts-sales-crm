@@ -80,7 +80,7 @@ export default async function Dashboard() {
   })
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-6">
       {/* アラートセクション */}
       {(alertContacts.length > 0 || followUpAlerts.length > 0) && (
         <div className="mb-8">
