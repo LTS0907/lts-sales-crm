@@ -8,136 +8,135 @@ datasource db {
 }
 
 model Contact {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  name           String
-  nameKana       String?
-  connectionType String?  // PERSONAL(個人) | BUSINESS(会社) | NETWORKING(勉強会) | ONLINE(オンライン) | OTHER
-  company        String?
-  department     String?
-  title        String?
-  email        String?
-  phone        String?
-  lineId       String?
-  gmailAlias   String?
-  website      String?
-  address      String?
-  photoPath    String?
-  cardImageUrl String?
-  episodeMemo  String?
-
-  contactSummary   String?
-  contactSummaryAt DateTime?
-  companySummary   String?
-  companySummaryAt DateTime?
-
-  recommendedServices String?
-  serviceReason       String?
-  emailSubject        String?
+  id                  String               @id
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime
+  name                String
+  nameKana            String?
+  company             String?
+  title               String?
+  email               String?
+  phone               String?
+  lineId              String?
+  gmailAlias          String?
+  website             String?
+  address             String?
+  photoPath           String?
+  companySummary      String?
+  companySummaryAt    DateTime?
+  contactSummary      String?
+  contactSummaryAt    DateTime?
+  cardImageUrl        String?
+  connectionType      String?
+  department          String?
   emailBody           String?
-  emailStatus         String  @default("UNSENT")
   emailSentAt         DateTime?
-
-  followUpText   String?
-  followUpStatus String  @default("NOT_SET")
-  followUpDate   DateTime?
-
-  salesPhase  String  @default("LEAD")
-  nextAction  String?
-  touchNumber Int     @default(0)
-
-  notes         Note[]
-  exchanges     Exchange[]
-  groupMembers  GroupMember[]
-  meetings      MeetingParticipant[]
-  followUpLogs  FollowUpLog[]
-  servicePhases ServicePhase[]
-}
-
-model ServicePhase {
-  id        String   @id @default(cuid())
-  contactId String
-  service   String
-  phase     String
-  updatedAt DateTime @updatedAt
-
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-
-  @@unique([contactId, service])
-}
-
-model Note {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  content   String
-  category  String   @default("GENERAL")
-  contactId String
-
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  emailStatus         String               @default("UNSENT")
+  emailSubject        String?
+  episodeMemo         String?
+  followUpDate        DateTime?
+  followUpStatus      String               @default("NOT_SET")
+  followUpText        String?
+  nextAction          String?
+  recommendedServices String?
+  salesPhase          String               @default("LEAD")
+  serviceReason       String?
+  touchNumber         Int                  @default(0)
+  Exchange            Exchange[]
+  FollowUpLog         FollowUpLog[]
+  GroupMember         GroupMember[]
+  MeetingParticipant  MeetingParticipant[]
+  Note                Note[]
+  ServicePhase        ServicePhase[]
+  TaskLink            TaskLink[]
 }
 
 model Exchange {
-  id          String   @id @default(cuid())
+  id          String   @id
   createdAt   DateTime @default(now())
   description String
   direction   String
   contactId   String
-
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  Contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
 
-model Meeting {
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  title        String?
-  date         DateTime
-  location     String?
-  notes        String?
-  participants MeetingParticipant[]
-}
-
-model MeetingParticipant {
-  meetingId String
-  contactId String
-
-  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-
-  @@id([meetingId, contactId])
+model FollowUpLog {
+  id          String    @id
+  createdAt   DateTime  @default(now())
+  contactId   String
+  touchNumber Int
+  subject     String?
+  body        String?
+  status      String    @default("DRAFTED")
+  sentAt      DateTime?
+  Contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
 
 model Group {
-  id          String        @id @default(cuid())
+  id          String        @id
   createdAt   DateTime      @default(now())
   name        String
   description String?
   type        String        @default("CUSTOM")
-  members     GroupMember[]
+  GroupMember GroupMember[]
 }
 
 model GroupMember {
   groupId      String
   contactId    String
-  consentGiven Boolean  @default(false)
-
-  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  consentGiven Boolean @default(false)
+  Contact      Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  Group        Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@id([groupId, contactId])
 }
 
-model FollowUpLog {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  contactId   String
-  touchNumber Int
-  subject     String?
-  body        String?
-  status      String   @default("DRAFTED")
-  sentAt      DateTime?
+model Meeting {
+  id                 String               @id
+  createdAt          DateTime             @default(now())
+  title              String?
+  date               DateTime
+  location           String?
+  notes              String?
+  MeetingParticipant MeetingParticipant[]
+}
 
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+model MeetingParticipant {
+  meetingId String
+  contactId String
+  Contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  Meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, contactId])
+}
+
+model Note {
+  id        String   @id
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  content   String
+  category  String   @default("GENERAL")
+  contactId String
+  Contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model ServicePhase {
+  id        String   @id
+  contactId String
+  service   String
+  phase     String
+  updatedAt DateTime
+  Contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, service])
+}
+
+model TaskLink {
+  id           String   @id
+  googleTaskId String   @unique
+  taskListId   String
+  contactId    String
+  presetLabel  String?
+  createdAt    DateTime @default(now())
+  Contact      Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
