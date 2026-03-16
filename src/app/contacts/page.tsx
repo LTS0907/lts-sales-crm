@@ -10,7 +10,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const contacts = await prisma.contact.findMany({
     where: q ? { OR: [{ name: { contains: q } }, { company: { contains: q } }] } : undefined,
     orderBy: { updatedAt: 'desc' },
-    include: { _count: { select: { notes: true } } },
+    include: { _count: { select: { Note: true } } },
   })
 
   return (

@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
     if (contactId) {
       await prisma.taskLink.create({
         data: {
+          id: crypto.randomUUID(),
           googleTaskId: created.data.id!,
           taskListId,
           contactId,

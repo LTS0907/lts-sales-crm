@@ -346,6 +346,7 @@ export async function POST(request: Request) {
     // Create exchange record
     const exchange = await prisma.exchange.create({
       data: {
+        id: crypto.randomUUID(),
         contactId,
         description: `${isIncoming ? '📥 受信' : '📤 送信'}: ${subject}\n${snippet}`,
         direction: isIncoming ? 'INCOMING' : 'OUTGOING',

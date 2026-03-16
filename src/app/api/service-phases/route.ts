@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   }
   const sp = await prisma.servicePhase.upsert({
     where: { contactId_service: { contactId, service } },
-    create: { contactId, service, phase },
+    create: { id: crypto.randomUUID(), updatedAt: new Date(), contactId, service, phase },
     update: { phase },
   })
   return NextResponse.json(sp)

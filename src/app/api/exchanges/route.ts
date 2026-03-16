@@ -3,6 +3,6 @@ import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   const data = await request.json()
-  const exchange = await prisma.exchange.create({ data: { description: data.description, direction: data.direction, contactId: data.contactId } })
+  const exchange = await prisma.exchange.create({ data: { id: crypto.randomUUID(), description: data.description, direction: data.direction, contactId: data.contactId } })
   return NextResponse.json(exchange)
 }

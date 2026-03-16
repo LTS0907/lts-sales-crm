@@ -13,7 +13,7 @@ export default async function ProgressPage({
   const [servicePhases, allContacts] = await Promise.all([
     prisma.servicePhase.findMany({
       include: {
-        contact: {
+        Contact: {
           select: {
             id: true,
             name: true,
