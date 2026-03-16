@@ -88,50 +88,52 @@ export async function POST(request: Request) {
     const formattedDate = `${issueDateObj.getFullYear()}年${issueDateObj.getMonth() + 1}月${issueDateObj.getDate()}日`
 
     // Prepare batch update values
+    // ※ テンプレートは結合セルを多用。必ず結合の「親セル（左上）」に書き込むこと。
     const updates: { range: string; values: (string | number)[][] }[] = [
-      // Title (B2) - 請求書 or 見積書
-      { range: 'B2', values: [[type === 'invoice' ? '請　求　書' : '見　積　書']] },
-      // Issue date (D4)
-      { range: 'D4', values: [[`発行年月日：${formattedDate}`]] },
-      // Company name (B6)
-      { range: 'B6', values: [[`${companyName}様`]] },
-      // Subject (B8)
-      { range: 'B8', values: [[`件名：${subject}`]] },
+      // Title (A2) - 請求書 or 見積書（A2:D2結合、親=A2）
+      { range: 'A2', values: [[type === 'invoice' ? '請　求　書' : '見　積　書']] },
+      // Issue date (E4) - 右側エリアはE列から始まる
+      { range: 'E4', values: [[`発行年月日：${formattedDate}`]] },
+      // Company name (A5) - A5:D6結合、親=A5（確認済み）
+      { range: 'A5', values: [[`${companyName}様`]] },
+      // Subject (A8) - A8:D8結合、親=A8（確認済み）
+      { range: 'A8', values: [[`件名：${subject}`]] },
       // Total amount (B13)
       { range: 'B13', values: [[`¥${total.toLocaleString()}`]] },
     ]
 
     // Add line items (starting from row 16)
+    // 列構成: A=日付, B=作業内容(B:D結合・親B), C/D=スレーブ, E=数量(確認済み), F=単位, G=単価, H=空, I=金額
     items.forEach((item, index) => {
       const row = 16 + index
-      if (row <= 33) { // Max 18 items (rows 16-33)
+      if (row <= 35) { // Max 20 items (rows 16-35)
         updates.push({
           range: `A${row}:I${row}`,
           values: [[
-            item.date,
-            item.description,
-            '', // Empty column
-            item.quantity,
-            item.unit,
-            `¥${item.unitPrice.toLocaleString()}`,
-            '', // Empty column
-            '', // Empty column
-            `¥${(item.quantity * item.unitPrice).toLocaleString()}`,
+            item.date,        // A: 日付
+            item.description, // B: 作業内容（B:D結合の親セル）
+            '',               // C: スレーブ（無視される）
+            '',               // D: スレーブ（無視される）
+            item.quantity,    // E: 数量（E15で確認済み）
+            item.unit,        // F: 単位
+            `¥${item.unitPrice.toLocaleString()}`, // G: 単価
+            '',               // H: 空
+            `¥${(item.quantity * item.unitPrice).toLocaleString()}`, // I: 金額
           ]],
         })
       }
     })
 
-    // Subtotal, tax, total (rows 34-36)
+    // Subtotal, tax, total (rows 36-38) - テンプレートで小計=I36, 消費税=I37, 合計=I38
     updates.push(
-      { range: 'I34', values: [[`¥${subtotal.toLocaleString()}`]] },
-      { range: 'I35', values: [[`¥${tax.toLocaleString()}`]] },
-      { range: 'I36', values: [[`¥${total.toLocaleString()}`]] },
+      { range: 'I36', values: [[`¥${subtotal.toLocaleString()}`]] },
+      { range: 'I37', values: [[`¥${tax.toLocaleString()}`]] },
+      { range: 'I38', values: [[`¥${total.toLocaleString()}`]] },
     )
 
-    // Notes (B35)
+    // Notes content (A37) - 備考ラベル(A36)は既にテンプレートにあるため内容のみ書込み
     if (notes) {
-      updates.push({ range: 'B35', values: [[`備考：${notes}`]] })
+      updates.push({ range: 'A37', values: [[notes]] })
     }
 
     // Apply all updates
