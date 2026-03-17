@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Sidebar from './Sidebar'
+import TaskPanel from './TaskPanel'
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -39,6 +40,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       <main className="flex-1 overflow-auto pt-12 md:pt-0">
         {children}
       </main>
+
+      {/* Google Tasks右パネル */}
+      <TaskPanel />
     </div>
   )
 }
