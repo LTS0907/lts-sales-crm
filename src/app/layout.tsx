@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Sidebar from '@/components/layout/Sidebar'
+import LayoutClient from '@/components/layout/LayoutClient'
 import SessionProvider from '@/components/providers/SessionProvider'
 
 export const metadata: Metadata = {
@@ -11,10 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className="flex h-screen bg-gray-50 overflow-hidden">
+      <body className="bg-gray-50">
         <SessionProvider>
-          <Sidebar />
-          <main className="flex-1 overflow-auto">{children}</main>
+          <LayoutClient>{children}</LayoutClient>
         </SessionProvider>
       </body>
     </html>
