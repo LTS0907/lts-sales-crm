@@ -116,6 +116,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [driveCreating, setDriveCreating] = useState(false)
   const [driveUploading, setDriveUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
   const [servicePhaseMap, setServicePhaseMap] = useState<Record<string, string>>(
     Object.fromEntries((contact.ServicePhase || []).map((sp: any) => [sp.service, sp.phase]))
   )
@@ -256,10 +257,17 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
 
   const fetchDriveFiles = async (fid: string) => {
     setDriveLoading(true)
+    setDriveError(null)
     try {
       const res = await fetch(`/api/drive?folderId=${fid}`)
       const data = await res.json()
+      if (!res.ok) {
+        setDriveError(`ファイル取得エラー (${res.status}): ${data.error || '不明なエラー'}`)
+        return
+      }
       setDriveFiles(data.files || [])
+    } catch (err) {
+      setDriveError(`通信エラー: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setDriveLoading(false)
     }
@@ -267,13 +275,22 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
 
   const createDriveFolder = async () => {
     setDriveCreating(true)
+    setDriveError(null)
     try {
       const res = await fetch('/api/drive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contactId: contact.id }) })
       const data = await res.json()
+      if (!res.ok) {
+        setDriveError(`エラー (${res.status}): ${data.error || '不明なエラー'}`)
+        return
+      }
       if (data.folderId) {
         setDriveFolderId(data.folderId)
         await fetchDriveFiles(data.folderId)
+      } else {
+        setDriveError('フォルダIDが返されませんでした')
       }
+    } catch (err) {
+      setDriveError(`通信エラー: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setDriveCreating(false)
     }
@@ -781,6 +798,11 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       {/* Drive Tab */}
       {tab === 'drive' && (
         <div className="space-y-4">
+          {driveError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              {driveError}
+            </div>
+          )}
           {!driveFolderId ? (
             <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
               <p className="text-4xl mb-3">📁</p>

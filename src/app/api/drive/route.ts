@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
   const folderName = `${contact.id}　${contact.company || contact.name}`
 
   try {
+    console.log('[Drive] Creating folder:', { folderName, parentFolder: PARENT_FOLDER_ID, contactId })
     const drive = getDriveClient(session.accessToken)
     const res = await drive.files.create({
       requestBody: {
@@ -72,12 +73,15 @@ export async function POST(request: NextRequest) {
       },
       fields: 'id',
     })
+    console.log('[Drive] Folder created:', res.data)
 
     const folderId = res.data.id!
     await prisma.contact.update({ where: { id: contactId }, data: { driveFolderId: folderId } })
     return NextResponse.json({ folderId })
   } catch (err: any) {
-    console.error('Drive create folder error:', err)
-    return NextResponse.json({ error: err.message || 'Drive error' }, { status: 500 })
+    const detail = err?.response?.data || err?.errors || err?.message || 'Unknown error'
+    console.error('[Drive] Create folder error:', JSON.stringify(detail, null, 2))
+    const message = typeof detail === 'string' ? detail : JSON.stringify(detail)
+    return NextResponse.json({ error: message }, { status: err?.code || 500 })
   }
 }
