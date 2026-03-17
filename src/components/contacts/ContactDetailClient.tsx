@@ -83,7 +83,7 @@ function NoteText({ text, contacts }: { text: string; contacts: { id: string; na
 export default function ContactDetailClient({ contact, allContacts }: { contact: any; allContacts: { id: string; name: string }[] }) {
   const router = useRouter()
   const { data: session } = useSession()
-  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'>('notes')
+  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'|'drive'>('notes')
   const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([])
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailError, setGmailError] = useState<string | null>(null)
@@ -110,6 +110,12 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [loadingService, setLoadingService] = useState(false)
   const [loadingCompany, setLoadingCompany] = useState(false)
   const [cardImageOpen, setCardImageOpen] = useState(false)
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(contact.driveFolderId || null)
+  const [driveFiles, setDriveFiles] = useState<any[]>([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveCreating, setDriveCreating] = useState(false)
+  const [driveUploading, setDriveUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const [servicePhaseMap, setServicePhaseMap] = useState<Record<string, string>>(
     Object.fromEntries((contact.ServicePhase || []).map((sp: any) => [sp.service, sp.phase]))
   )
@@ -248,12 +254,69 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     }
   }
 
+  const fetchDriveFiles = async (fid: string) => {
+    setDriveLoading(true)
+    try {
+      const res = await fetch(`/api/drive?folderId=${fid}`)
+      const data = await res.json()
+      setDriveFiles(data.files || [])
+    } finally {
+      setDriveLoading(false)
+    }
+  }
+
+  const createDriveFolder = async () => {
+    setDriveCreating(true)
+    try {
+      const res = await fetch('/api/drive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contactId: contact.id }) })
+      const data = await res.json()
+      if (data.folderId) {
+        setDriveFolderId(data.folderId)
+        await fetchDriveFiles(data.folderId)
+      }
+    } finally {
+      setDriveCreating(false)
+    }
+  }
+
+  const uploadFilesToDrive = async (files: FileList | File[]) => {
+    if (!driveFolderId) return
+    setDriveUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('folderId', driveFolderId)
+        const res = await fetch('/api/drive/upload', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (data.file) setDriveFiles(prev => [data.file, ...prev])
+      }
+    } finally {
+      setDriveUploading(false)
+    }
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files.length > 0) {
+      await uploadFilesToDrive(e.dataTransfer.files)
+    }
+  }
+
   // Fetch Gmail when exchanges tab is opened and user has email
   useEffect(() => {
     if (tab === 'exchanges' && session?.accessToken && contact.email && gmailMessages.length === 0 && !gmailLoading) {
       fetchGmailHistory()
     }
   }, [tab, session?.accessToken, contact.email])
+
+  // Fetch Drive files when drive tab is opened
+  useEffect(() => {
+    if (tab === 'drive' && driveFolderId && driveFiles.length === 0 && !driveLoading) {
+      fetchDriveFiles(driveFolderId)
+    }
+  }, [tab, driveFolderId])
 
   const statusInfo = EMAIL_STATUS.find(s => s.value === emailStatus) || EMAIL_STATUS[0]
 
@@ -372,7 +435,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-5">
         <div className="flex gap-0">
-          {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ']].map(([key, label]) => (
+          {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ'],['drive','ドライブ']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key as any)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {label}
@@ -712,6 +775,106 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               : aiSummary ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{aiSummary}</p>
               : <p className="text-sm text-gray-400">「まとめを生成」を押してAIによる人物分析を行います</p>}
           </div>
+        </div>
+      )}
+
+      {/* Drive Tab */}
+      {tab === 'drive' && (
+        <div className="space-y-4">
+          {!driveFolderId ? (
+            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
+              <p className="text-4xl mb-3">📁</p>
+              <p className="text-sm text-gray-600 mb-1">このお客様用のGoogle Driveフォルダがまだありません</p>
+              <p className="text-xs text-gray-400 mb-4">フォルダ名: {contact.id}　{contact.company || contact.name}</p>
+              <button
+                onClick={createDriveFolder}
+                disabled={driveCreating}
+                className="px-5 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {driveCreating ? '作成中...' : 'フォルダを作成する'}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📁</span>
+                  <span className="text-sm font-semibold text-gray-700">Driveファイル</span>
+                  <span className="text-xs text-gray-400">({driveFiles.length}件)</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchDriveFiles(driveFolderId)}
+                    disabled={driveLoading}
+                    className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {driveLoading ? '更新中...' : '更新'}
+                  </button>
+                  <a
+                    href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Driveで開く ↗
+                  </a>
+                </div>
+              </div>
+
+              {/* Drag & Drop Upload Area */}
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}
+              >
+                <p className="text-2xl mb-2">{driveUploading ? '⏳' : '☁️'}</p>
+                <p className="text-sm text-gray-500 mb-2">
+                  {driveUploading ? 'アップロード中...' : 'ここにファイルをドラッグ＆ドロップ'}
+                </p>
+                <label className={`text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg cursor-pointer hover:bg-white transition-colors ${driveUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  ファイルを選択
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={e => { if (e.target.files) uploadFilesToDrive(e.target.files) }}
+                    disabled={driveUploading}
+                  />
+                </label>
+              </div>
+
+              {/* File List */}
+              {driveLoading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">読み込み中...</div>
+              ) : driveFiles.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">ファイルがまだありません</div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  {driveFiles.map((file, i) => (
+                    <a
+                      key={file.id}
+                      href={file.webViewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${i !== 0 ? 'border-t border-gray-100' : ''}`}
+                    >
+                      {file.iconLink && <img src={file.iconLink} alt="" className="w-5 h-5 flex-shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString('ja-JP') : ''}
+                          {file.size ? `　${Math.round(Number(file.size) / 1024)} KB` : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs text-blue-500 flex-shrink-0">開く ↗</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

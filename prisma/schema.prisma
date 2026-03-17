@@ -42,6 +42,7 @@ model Contact {
   salesPhase          String               @default("LEAD")
   serviceReason       String?
   touchNumber         Int                  @default(0)
+  driveFolderId       String?
   Exchange            Exchange[]
   FollowUpLog         FollowUpLog[]
   GroupMember         GroupMember[]
