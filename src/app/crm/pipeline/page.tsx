@@ -22,12 +22,13 @@ export default async function PipelinePage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-5">パイプライン</h1>
-      <div className="overflow-x-auto">
-        <div className="flex gap-4 min-w-max pb-4">
+      {/* PC: 横スクロール、スマホ: 縦積み */}
+      <div className="block md:overflow-x-auto">
+        <div className="flex flex-col gap-4 md:flex-row md:min-w-max pb-4">
           {PHASES.map(phase => {
             const phaseContacts = contacts.filter(c => c.salesPhase === phase.value)
             return (
-              <div key={phase.value} className={`w-56 flex-shrink-0 bg-gray-50 rounded-xl border-t-4 ${phase.color} p-3`}>
+              <div key={phase.value} className={`w-full md:w-56 md:flex-shrink-0 bg-gray-50 rounded-xl border-t-4 ${phase.color} p-3`}>
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold text-gray-700">{phase.label}</h2>
                   <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{phaseContacts.length}</span>
