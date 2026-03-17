@@ -19,9 +19,11 @@ interface InvoiceModalProps {
     company: string | null
     email: string | null
   }
+  driveFolderId: string | null
+  onDriveFolderCreated?: (folderId: string) => void
 }
 
-export default function InvoiceModal({ isOpen, onClose, contact }: InvoiceModalProps) {
+export default function InvoiceModal({ isOpen, onClose, contact, driveFolderId, onDriveFolderCreated }: InvoiceModalProps) {
   const [type, setType] = useState<'invoice' | 'estimate'>('estimate')
   const [subject, setSubject] = useState('')
   const [items, setItems] = useState<InvoiceItem[]>([
@@ -34,11 +36,14 @@ export default function InvoiceModal({ isOpen, onClose, contact }: InvoiceModalP
     spreadsheetUrl: string
     documentTitle: string
     total: number
+    movedToDrive?: boolean
+    driveCreated?: boolean
   } | null>(null)
   const [sendModalOpen, setSendModalOpen] = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [sending, setSending] = useState(false)
+  const [driveConfirmOpen, setDriveConfirmOpen] = useState(false)
 
   const addItem = () => {
     setItems([...items, { date: '', description: '', quantity: 1, unit: '式', unitPrice: 0 }])
@@ -60,16 +65,30 @@ export default function InvoiceModal({ isOpen, onClose, contact }: InvoiceModalP
     return { subtotal, tax, total: subtotal + tax }
   }
 
-  const handleCreate = async () => {
+  const validateForm = () => {
     if (!subject.trim()) {
       alert('件名を入力してください')
-      return
+      return false
     }
     if (items.length === 0 || items.every(item => !item.description.trim())) {
       alert('明細を入力してください')
+      return false
+    }
+    return true
+  }
+
+  const handleCreate = async () => {
+    if (!validateForm()) return
+    // Driveフォルダがない場合は確認ポップアップ
+    if (!driveFolderId) {
+      setDriveConfirmOpen(true)
       return
     }
+    await createInvoice(false)
+  }
 
+  const createInvoice = async (createDriveFolder: boolean) => {
+    setDriveConfirmOpen(false)
     setLoading(true)
     try {
       const res = await fetch('/api/invoice/create', {
@@ -81,6 +100,7 @@ export default function InvoiceModal({ isOpen, onClose, contact }: InvoiceModalP
           subject,
           items: items.filter(item => item.description.trim()),
           notes,
+          createDriveFolder,
         }),
       })
 
@@ -91,6 +111,11 @@ export default function InvoiceModal({ isOpen, onClose, contact }: InvoiceModalP
 
       const data = await res.json()
       setCreatedInvoice(data)
+
+      // Driveフォルダが新規作成された場合、親コンポーネントに通知
+      if (data.driveCreated && data.driveFolderId && onDriveFolderCreated) {
+        onDriveFolderCreated(data.driveFolderId)
+      }
 
       // Set default email content
       const typeLabel = type === 'invoice' ? '請求書' : '見積書'
@@ -191,6 +216,9 @@ TEL: 048-954-9105
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                 <p className="text-green-700 font-medium text-lg">✅ {createdInvoice.documentTitle}</p>
                 <p className="text-green-600 text-sm mt-1">合計金額: ¥{createdInvoice.total.toLocaleString()}</p>
+                {createdInvoice.movedToDrive && (
+                  <p className="text-blue-600 text-xs mt-2">📁 Google Driveに自動保存しました{createdInvoice.driveCreated ? '（フォルダも新規作成）' : ''}</p>
+                )}
               </div>
 
               <div className="flex gap-3 justify-center">
@@ -415,8 +443,36 @@ TEL: 048-954-9105
           )}
         </div>
 
+        {/* Drive folder confirmation popup */}
+        {driveConfirmOpen && (
+          <div className="p-4 border-t border-gray-200 bg-yellow-50">
+            <p className="text-sm text-gray-800 font-medium mb-1">📁 Google Driveフォルダがありません</p>
+            <p className="text-xs text-gray-600 mb-3">このお客様用のDriveフォルダを作成して、作成した書類を自動保存しますか？</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setDriveConfirmOpen(false) }}
+                className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => createInvoice(false)}
+                className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+              >
+                Driveに保存せず作成
+              </button>
+              <button
+                onClick={() => createInvoice(true)}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
+              >
+                フォルダを作成して保存
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        {!createdInvoice && (
+        {!createdInvoice && !driveConfirmOpen && (
           <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
             <button
               onClick={handleClose}

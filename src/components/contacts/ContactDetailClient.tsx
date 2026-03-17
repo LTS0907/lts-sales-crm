@@ -977,6 +977,8 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           company: contact.company,
           email: contact.email,
         }}
+        driveFolderId={driveFolderId}
+        onDriveFolderCreated={(fid) => setDriveFolderId(fid)}
       />
     </div>
   )

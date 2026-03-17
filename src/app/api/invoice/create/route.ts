@@ -24,7 +24,10 @@ interface CreateInvoiceRequest {
   items: InvoiceItem[]
   notes?: string // 備考
   issueDate?: string // 発行日（省略時は今日）
+  createDriveFolder?: boolean // Driveフォルダがない場合に作成するか
 }
+
+const DRIVE_PARENT_FOLDER_ID = '1Z_tAkH5jEk5MVMGaajArqcLKI2dqbu40'
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
@@ -35,15 +38,17 @@ export async function POST(request: Request) {
 
   try {
     const body: CreateInvoiceRequest = await request.json()
-    const { contactId, type, subject, items, notes, issueDate } = body
+    const { contactId, type, subject, items, notes, issueDate, createDriveFolder } = body
 
     // Get contact info
     const contact = await prisma.contact.findUnique({
       where: { id: contactId },
       select: {
+        id: true,
         name: true,
         company: true,
         email: true,
+        driveFolderId: true,
       },
     })
 
@@ -140,6 +145,49 @@ export async function POST(request: Request) {
       },
     })
 
+    // Move to contact's Drive folder
+    let driveFolderId = contact.driveFolderId
+    let driveCreated = false
+
+    if (!driveFolderId && createDriveFolder) {
+      // Create Drive folder for the contact
+      const folderName = `${contact.company || contact.name}　${contact.id}`
+      const folderRes = await drive.files.create({
+        requestBody: {
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [DRIVE_PARENT_FOLDER_ID],
+        },
+        fields: 'id',
+        supportsAllDrives: true,
+      })
+      driveFolderId = folderRes.data.id!
+      await prisma.contact.update({ where: { id: contact.id }, data: { driveFolderId } })
+      driveCreated = true
+    }
+
+    let movedToDrive = false
+    if (driveFolderId) {
+      try {
+        // Get current parent to remove it, then add new parent
+        const fileInfo = await drive.files.get({
+          fileId: newSpreadsheetId,
+          fields: 'parents',
+          supportsAllDrives: true,
+        })
+        const previousParents = (fileInfo.data.parents || []).join(',')
+        await drive.files.update({
+          fileId: newSpreadsheetId,
+          addParents: driveFolderId,
+          removeParents: previousParents,
+          supportsAllDrives: true,
+        })
+        movedToDrive = true
+      } catch (moveErr) {
+        console.error('Failed to move file to Drive folder:', moveErr)
+      }
+    }
+
     // Get the spreadsheet URL
     const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${newSpreadsheetId}/edit`
 
@@ -149,6 +197,9 @@ export async function POST(request: Request) {
       spreadsheetUrl,
       documentTitle,
       total,
+      movedToDrive,
+      driveFolderId: driveFolderId || null,
+      driveCreated,
     })
   } catch (error: unknown) {
     console.error('Invoice creation error:', error)
