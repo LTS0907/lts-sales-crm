@@ -807,7 +807,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
             <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
               <p className="text-4xl mb-3">📁</p>
               <p className="text-sm text-gray-600 mb-1">このお客様用のGoogle Driveフォルダがまだありません</p>
-              <p className="text-xs text-gray-400 mb-4">フォルダ名: {contact.id}　{contact.company || contact.name}</p>
+              <p className="text-xs text-gray-400 mb-4">フォルダ名: {contact.company || contact.name}　{contact.id}</p>
               <button
                 onClick={createDriveFolder}
                 disabled={driveCreating}

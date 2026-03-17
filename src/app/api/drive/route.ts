@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ folderId: contact.driveFolderId })
   }
 
-  const folderName = `${contact.id}　${contact.company || contact.name}`
+  const folderName = `${contact.company || contact.name}　${contact.id}`
 
   try {
     console.log('[Drive] Creating folder:', { folderName, parentFolder: PARENT_FOLDER_ID, contactId })
