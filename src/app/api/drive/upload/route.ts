@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
         body: stream,
       },
       fields: 'id, name, mimeType, size, modifiedTime, webViewLink, iconLink',
+      supportsAllDrives: true,
     })
 
     return NextResponse.json({ file: res.data })

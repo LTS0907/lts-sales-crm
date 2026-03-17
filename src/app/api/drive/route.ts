@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
       q: `'${folderId}' in parents and trashed = false`,
       fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink, iconLink)',
       orderBy: 'modifiedTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     })
     return NextResponse.json({ files: res.data.files || [] })
   } catch (err: any) {
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest) {
         parents: [PARENT_FOLDER_ID],
       },
       fields: 'id',
+      supportsAllDrives: true,
     })
     console.log('[Drive] Folder created:', res.data)
 
