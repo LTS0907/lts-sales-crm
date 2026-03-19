@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { parseRelationships } from '@/lib/relationship-parser'
 import ServiceProgressStepper from '@/components/crm/ServiceProgressStepper'
 import InvoiceModal from './InvoiceModal'
+import TaskModal from './TaskModal'
 
 interface GmailMessage {
   id: string
@@ -121,6 +122,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     Object.fromEntries((contact.ServicePhase || []).map((sp: any) => [sp.service, sp.phase]))
   )
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
 
   const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -397,6 +399,12 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               {contact.company && <p className="text-sm font-medium text-blue-600">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => setTaskModalOpen(true)}
+                className="px-3 py-1 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50"
+              >
+                ✅ タスク追加
+              </button>
               <button
                 onClick={() => setInvoiceModalOpen(true)}
                 className="px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
@@ -966,6 +974,15 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           </div>
         </div>
       )}
+
+      {/* Task Modal */}
+      <TaskModal
+        isOpen={taskModalOpen}
+        onClose={() => setTaskModalOpen(false)}
+        contactId={contact.id}
+        contactName={contact.name}
+        onTaskCreated={() => {}}
+      />
 
       {/* Invoice Modal */}
       <InvoiceModal
