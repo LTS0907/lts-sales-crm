@@ -12,6 +12,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const data = await request.json()
 
+  // salesPhase が変更される場合、updatedAt を更新（アラート判定用）
+  if (data.salesPhase) {
+    const current = await prisma.contact.findUnique({ where: { id }, select: { salesPhase: true } })
+    if (current && current.salesPhase !== data.salesPhase) {
+      data.updatedAt = new Date()
+    }
+  }
+
   const contact = await prisma.contact.update({ where: { id }, data })
   return NextResponse.json({ contact })
 }

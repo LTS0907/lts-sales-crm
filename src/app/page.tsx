@@ -78,36 +78,10 @@ export default async function Dashboard() {
     return new Date(a.followUpDate!).getTime() - new Date(b.followUpDate!).getTime()
   })
 
-  // デバッグ: フェーズ別の人数と経過日数
-  const debug = {
-    total: contacts.length,
-    phases: Object.entries(
-      contacts.reduce((acc, c) => { acc[c.salesPhase] = (acc[c.salesPhase] || 0) + 1; return acc }, {} as Record<string, number>)
-    ),
-    nonTerminal: contacts.filter(c => !['CONTRACTED','PAID','LOST','COMPLETED'].includes(c.salesPhase)).length,
-    over14days: contacts.filter(c => {
-      if (['CONTRACTED','PAID','LOST','COMPLETED'].includes(c.salesPhase)) return false
-      return getDaysSince(c.updatedAt) >= ALERT_DAYS
-    }).length,
-    sampleDates: contacts.slice(0, 5).map(c => ({
-      name: c.name,
-      phase: c.salesPhase,
-      days: getDaysSince(c.updatedAt),
-    })),
-  }
-
   return (
     <div className="p-6">
-      {/* デバッグ情報（後で削除） */}
-      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-gray-600">
-        <p>全{debug.total}名 | 終了フェーズ以外: {debug.nonTerminal}名 | 14日超: {debug.over14days}名</p>
-        <p>フェーズ別: {debug.phases.map(([k,v]) => `${k}:${v}`).join(', ')}</p>
-        <p>サンプル: {debug.sampleDates.map(d => `${d.name}(${d.phase},${d.days}日前)`).join(' / ')}</p>
-      </div>
-
-      {/* アラートセクション */}
-      {(alertContacts.length > 0 || followUpAlerts.length > 0) && (
-        <div className="mb-8">
+      {/* アラートセクション（常に表示） */}
+      <div className="mb-8">
           <h2 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
             🔔 アクション必要
           </h2>
@@ -176,8 +150,13 @@ export default async function Dashboard() {
               </div>
             )}
           </div>
-        </div>
-      )}
+
+          {alertContacts.length === 0 && followUpAlerts.length === 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+              <p className="text-sm text-green-700">全員14日以内にアプローチ済みです</p>
+            </div>
+          )}
+      </div>
 
       {/* 進捗管理セクション */}
       <div>

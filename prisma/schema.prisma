@@ -10,7 +10,7 @@ datasource db {
 model Contact {
   id                  String               @id
   createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  updatedAt           DateTime
   name                String
   nameKana            String?
   company             String?
