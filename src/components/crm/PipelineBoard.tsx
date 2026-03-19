@@ -38,7 +38,6 @@ const PHASES: Phase[] = [
   { value: 'PROPOSING', label: '提案中', color: 'border-yellow-300' },
   { value: 'CONTRACTED', label: '受注', color: 'border-green-300' },
   { value: 'NURTURING', label: '育成中', color: 'border-orange-300' },
-  { value: 'LOST', label: '失注', color: 'border-red-300' },
 ]
 
 const STATUS_DOT: Record<string, string> = {
@@ -97,8 +96,26 @@ function DroppableColumn({ phase, contacts }: { phase: Phase; contacts: Contact[
   )
 }
 
+function LostDropZone() {
+  const { isOver, setNodeRef } = useDroppable({ id: 'LOST' })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`mt-4 rounded-xl border-2 border-dashed py-4 text-center transition-colors ${
+        isOver
+          ? 'border-red-400 bg-red-50 text-red-600'
+          : 'border-red-200 bg-red-50/50 text-red-400'
+      }`}
+    >
+      <span className="text-lg">✕</span>
+      <p className="text-sm font-medium mt-1">ここにドロップで失注</p>
+    </div>
+  )
+}
+
 export default function PipelineBoard({ initialContacts }: { initialContacts: Contact[] }) {
-  const [contacts, setContacts] = useState<Contact[]>(initialContacts)
+  const [contacts, setContacts] = useState<Contact[]>(initialContacts.filter(c => c.salesPhase !== 'LOST'))
   const [activeContact, setActiveContact] = useState<Contact | null>(null)
 
   const pointerSensor = useSensor(PointerSensor, {
@@ -126,7 +143,12 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
     if (!contact || contact.salesPhase === newPhase) return
 
     // Optimistic update
-    setContacts(prev => prev.map(c => c.id === contactId ? { ...c, salesPhase: newPhase } : c))
+    if (newPhase === 'LOST') {
+      // Remove from board
+      setContacts(prev => prev.filter(c => c.id !== contactId))
+    } else {
+      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, salesPhase: newPhase } : c))
+    }
 
     try {
       const res = await fetch(`/api/contacts/${contactId}`, {
@@ -137,7 +159,11 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
       if (!res.ok) throw new Error()
     } catch {
       // Rollback on error
-      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, salesPhase: contact.salesPhase } : c))
+      if (newPhase === 'LOST') {
+        setContacts(prev => [...prev, contact])
+      } else {
+        setContacts(prev => prev.map(c => c.id === contactId ? { ...c, salesPhase: contact.salesPhase } : c))
+      }
     }
   }
 
@@ -159,6 +185,7 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
           ))}
         </div>
       </div>
+      {activeContact && <LostDropZone />}
       <DragOverlay>
         {activeContact ? (
           <div className="w-56">
