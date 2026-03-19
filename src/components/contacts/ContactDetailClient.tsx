@@ -43,7 +43,7 @@ const SALES_PHASES = [
   { value: 'LEAD', label: 'リード' },
   { value: 'APPOINTMENT', label: 'アポ調整' },
   { value: 'MEETING_SET', label: '商談設定' },
-  { value: 'MEETING_DONE', label: '打ち合わせ完了' },
+  { value: 'MEETING_DONE', label: 'アポ調整完了' },
   { value: 'PROPOSING', label: '提案中' },
   { value: 'CONTRACTED', label: '受注' },
   { value: 'LOST', label: '失注' },

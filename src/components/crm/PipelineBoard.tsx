@@ -33,7 +33,7 @@ interface Phase {
 const PHASES: Phase[] = [
   { value: 'LEAD', label: 'リード', color: 'border-gray-300' },
   { value: 'APPOINTMENT', label: 'アポ調整', color: 'border-blue-300' },
-  { value: 'MEETING_DONE', label: '打ち合わせ完了', color: 'border-purple-300' },
+  { value: 'MEETING_DONE', label: 'アポ調整完了', color: 'border-purple-300' },
   { value: 'PROPOSING', label: '提案中', color: 'border-yellow-300' },
   { value: 'CONTRACTED', label: '受注', color: 'border-green-300' },
   { value: 'NURTURING', label: '育成中', color: 'border-orange-300' },
