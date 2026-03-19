@@ -38,6 +38,7 @@ const PHASES: Phase[] = [
   { value: 'PROPOSING', label: '提案中', color: 'border-yellow-300' },
   { value: 'CONTRACTED', label: '受注', color: 'border-green-300' },
   { value: 'NURTURING', label: '育成中', color: 'border-orange-300' },
+  { value: 'LOST', label: '失注', color: 'border-red-300' },
 ]
 
 const STATUS_DOT: Record<string, string> = {
