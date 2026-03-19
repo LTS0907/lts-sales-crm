@@ -45,6 +45,7 @@ export default async function Dashboard() {
         followUpStatus: true,
         followUpDate: true,
         salesPhase: true,
+        phaseChangedAt: true,
         updatedAt: true,
         touchNumber: true,
       },
@@ -54,19 +55,18 @@ export default async function Dashboard() {
     }),
   ])
 
-  // アラート対象：最後のアプローチから14日以上経過 & フェーズが終了していない
+  // アラート対象：フェーズ最終更新から14日以上経過 & フェーズが終了していない
   const alertContacts = contacts.filter(c => {
     // 終了フェーズはアラート対象外
     if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST' || c.salesPhase === 'COMPLETED') {
       return false
     }
-    // メール送信日または更新日から経過日数を計算
-    const lastActivity = c.emailSentAt || c.updatedAt
-    const daysSince = getDaysSince(lastActivity)
+    // フェーズ変更日から経過日数を計算
+    const daysSince = getDaysSince(c.phaseChangedAt)
     return daysSince >= ALERT_DAYS
   }).sort((a, b) => {
-    const daysA = getDaysSince(a.emailSentAt || a.updatedAt)
-    const daysB = getDaysSince(b.emailSentAt || b.updatedAt)
+    const daysA = getDaysSince(a.phaseChangedAt)
+    const daysB = getDaysSince(b.phaseChangedAt)
     return daysB - daysA // 古い順
   })
 
@@ -98,7 +98,7 @@ export default async function Dashboard() {
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {alertContacts.slice(0, 10).map(c => {
-                    const days = getDaysSince(c.emailSentAt || c.updatedAt)
+                    const days = getDaysSince(c.phaseChangedAt)
                     return (
                       <Link key={c.id} href={`/contacts/${c.id}`}>
                         <div className="bg-white rounded-lg p-3 hover:shadow-md transition-shadow border border-red-100">
@@ -177,7 +177,7 @@ export default async function Dashboard() {
             // このサービスでアラート対象の人数
             const alertCount = contactsForSvc.filter(c => {
               if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST') return false
-              const days = getDaysSince(c.emailSentAt || c.updatedAt)
+              const days = getDaysSince(c.phaseChangedAt)
               return days >= ALERT_DAYS
             }).length
 
