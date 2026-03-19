@@ -45,7 +45,6 @@ export default async function Dashboard() {
         followUpStatus: true,
         followUpDate: true,
         salesPhase: true,
-        phaseChangedAt: true,
         updatedAt: true,
         touchNumber: true,
       },
@@ -62,11 +61,11 @@ export default async function Dashboard() {
       return false
     }
     // フェーズ変更日から経過日数を計算（未設定時はupdatedAtで代用）
-    const daysSince = getDaysSince(c.phaseChangedAt || c.updatedAt)
+    const daysSince = getDaysSince(c.updatedAt)
     return daysSince >= ALERT_DAYS
   }).sort((a, b) => {
-    const daysA = getDaysSince(a.phaseChangedAt || a.updatedAt)
-    const daysB = getDaysSince(b.phaseChangedAt || b.updatedAt)
+    const daysA = getDaysSince(a.updatedAt)
+    const daysB = getDaysSince(b.updatedAt)
     return daysB - daysA // 古い順
   })
 
@@ -98,7 +97,7 @@ export default async function Dashboard() {
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {alertContacts.slice(0, 10).map(c => {
-                    const days = getDaysSince(c.phaseChangedAt || c.updatedAt)
+                    const days = getDaysSince(c.updatedAt)
                     return (
                       <Link key={c.id} href={`/contacts/${c.id}`}>
                         <div className="bg-white rounded-lg p-3 hover:shadow-md transition-shadow border border-red-100">
@@ -177,7 +176,7 @@ export default async function Dashboard() {
             // このサービスでアラート対象の人数
             const alertCount = contactsForSvc.filter(c => {
               if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST') return false
-              const days = getDaysSince(c.phaseChangedAt || c.updatedAt)
+              const days = getDaysSince(c.updatedAt)
               return days >= ALERT_DAYS
             }).length
 

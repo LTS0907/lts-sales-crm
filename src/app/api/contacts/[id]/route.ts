@@ -12,11 +12,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const data = await request.json()
 
-  // salesPhase が変更される場合、phaseChangedAt を自動更新
+  // salesPhase が変更される場合、phaseChangedAt を自動更新（カラム存在時のみ）
   if (data.salesPhase) {
-    const current = await prisma.contact.findUnique({ where: { id }, select: { salesPhase: true } })
-    if (current && current.salesPhase !== data.salesPhase) {
-      data.phaseChangedAt = new Date()
+    try {
+      const current = await prisma.contact.findUnique({ where: { id }, select: { salesPhase: true } })
+      if (current && current.salesPhase !== data.salesPhase) {
+        data.phaseChangedAt = new Date()
+      }
+    } catch {
+      // phaseChangedAt カラム未作成の場合は無視
     }
   }
 
