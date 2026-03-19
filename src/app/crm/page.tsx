@@ -94,7 +94,7 @@ async function PipelineSummary() {
   const phases = await prisma.contact.groupBy({ by: ['salesPhase'], _count: true })
   const PHASE_LABELS: Record<string, string> = {
     LEAD: 'リード', APPOINTMENT: 'アポ調整', MEETING_SET: '商談設定',
-    MEETING_DONE: 'アポ調整完了', PROPOSING: '提案中', CONTRACTED: '受注',
+    MEETING_DONE: 'アポ調整完了', PROPOSING: '提案中', CONTRACTED: '入金待ち', PAID: '入金完了',
     LOST: '失注', ON_HOLD: '保留', NURTURING: '育成中', INTERESTED: '関心あり', LONG_TERM: '長期育成',
   }
   return (

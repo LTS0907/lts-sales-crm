@@ -57,7 +57,7 @@ export default async function Dashboard() {
   // アラート対象：最後のアプローチから14日以上経過 & フェーズが終了していない
   const alertContacts = contacts.filter(c => {
     // 終了フェーズはアラート対象外
-    if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'LOST' || c.salesPhase === 'COMPLETED') {
+    if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST' || c.salesPhase === 'COMPLETED') {
       return false
     }
     // メール送信日または更新日から経過日数を計算
@@ -176,7 +176,7 @@ export default async function Dashboard() {
 
             // このサービスでアラート対象の人数
             const alertCount = contactsForSvc.filter(c => {
-              if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'LOST') return false
+              if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST') return false
               const days = getDaysSince(c.emailSentAt || c.updatedAt)
               return days >= ALERT_DAYS
             }).length

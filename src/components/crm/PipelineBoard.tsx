@@ -35,7 +35,8 @@ const PHASES: Phase[] = [
   { value: 'APPOINTMENT', label: 'アポ調整', color: 'border-blue-300' },
   { value: 'MEETING_DONE', label: 'アポ調整完了', color: 'border-purple-300' },
   { value: 'PROPOSING', label: '提案中', color: 'border-yellow-300' },
-  { value: 'CONTRACTED', label: '受注', color: 'border-green-300' },
+  { value: 'CONTRACTED', label: '入金待ち', color: 'border-green-300' },
+  { value: 'PAID', label: '入金完了', color: 'border-emerald-400' },
   { value: 'NURTURING', label: '育成中', color: 'border-orange-300' },
 ]
 
