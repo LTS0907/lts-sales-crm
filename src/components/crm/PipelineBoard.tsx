@@ -11,7 +11,8 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
   useDroppable,
 } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
@@ -170,7 +171,7 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
