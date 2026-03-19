@@ -40,7 +40,6 @@ model Contact {
   nextAction          String?
   recommendedServices String?
   salesPhase          String               @default("LEAD")
-  phaseChangedAt      DateTime?
   serviceReason       String?
   touchNumber         Int                  @default(0)
   driveFolderId       String?
