@@ -10,9 +10,7 @@ import {
   useSensors,
   DragStartEvent,
   DragEndEvent,
-  DragOverEvent,
   pointerWithin,
-  rectIntersection,
   useDroppable,
 } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
@@ -41,6 +39,11 @@ const PHASES: Phase[] = [
   { value: 'NURTURING', label: '育成中', color: 'border-orange-300' },
 ]
 
+const ALL_MOVE_TARGETS = [
+  ...PHASES,
+  { value: 'LOST', label: '失注', color: 'border-red-300' },
+]
+
 const STATUS_DOT: Record<string, string> = {
   UNSENT: 'bg-gray-300', DRAFTED: 'bg-yellow-400', APPROVED: 'bg-blue-400', SENT: 'bg-green-400',
 }
@@ -58,28 +61,41 @@ function ContactCard({ contact, isDragging }: { contact: Contact; isDragging?: b
   )
 }
 
-function DraggableCard({ contact }: { contact: Contact }) {
+function DraggableCard({ contact, selected, onToggle }: { contact: Contact; selected: boolean; onToggle: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: contact.id,
     data: { contact },
   })
 
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={`${isDragging ? 'opacity-30' : ''}`}>
-      <Link href={`/contacts/${contact.id}`} onClick={e => { if (isDragging) e.preventDefault() }}>
-        <ContactCard contact={contact} />
-      </Link>
+    <div className={`flex items-start gap-1.5 ${isDragging ? 'opacity-30' : ''}`}>
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onToggle(contact.id) }}
+        className={`mt-2.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+          selected
+            ? 'bg-blue-600 border-blue-600 text-white'
+            : 'border-gray-300 bg-white hover:border-blue-400'
+        }`}
+      >
+        {selected && <span className="text-[10px] leading-none">✓</span>}
+      </button>
+      <div ref={setNodeRef} {...listeners} {...attributes} className="flex-1 min-w-0">
+        <Link href={`/contacts/${contact.id}`} onClick={e => { if (isDragging) e.preventDefault() }}>
+          <ContactCard contact={contact} />
+        </Link>
+      </div>
     </div>
   )
 }
 
-function DroppableColumn({ phase, contacts }: { phase: Phase; contacts: Contact[] }) {
+function DroppableColumn({ phase, contacts, selectedIds, onToggle }: { phase: Phase; contacts: Contact[]; selectedIds: Set<string>; onToggle: (id: string) => void }) {
   const { isOver, setNodeRef } = useDroppable({ id: phase.value })
 
   return (
     <div
       ref={setNodeRef}
-      className={`w-full md:w-56 md:flex-shrink-0 rounded-xl border-t-4 ${phase.color} p-3 transition-colors ${
+      className={`w-full md:w-60 md:flex-shrink-0 rounded-xl border-t-4 ${phase.color} p-3 transition-colors ${
         isOver ? 'bg-blue-50 ring-2 ring-blue-300' : 'bg-gray-50'
       }`}
     >
@@ -89,7 +105,7 @@ function DroppableColumn({ phase, contacts }: { phase: Phase; contacts: Contact[
       </div>
       <div className="space-y-2 min-h-[40px]">
         {contacts.map(c => (
-          <DraggableCard key={c.id} contact={c} />
+          <DraggableCard key={c.id} contact={c} selected={selectedIds.has(c.id)} onToggle={onToggle} />
         ))}
         {contacts.length === 0 && !isOver && <p className="text-xs text-gray-400 text-center py-3">なし</p>}
       </div>
@@ -118,6 +134,58 @@ function LostDropZone() {
 export default function PipelineBoard({ initialContacts }: { initialContacts: Contact[] }) {
   const [contacts, setContacts] = useState<Contact[]>(initialContacts.filter(c => c.salesPhase !== 'LOST'))
   const [activeContact, setActiveContact] = useState<Contact | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkMoving, setBulkMoving] = useState(false)
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const bulkMove = async (targetPhase: string) => {
+    if (selectedIds.size === 0 || bulkMoving) return
+    setBulkMoving(true)
+
+    const ids = Array.from(selectedIds)
+    const oldContacts = contacts.filter(c => ids.includes(c.id))
+
+    // Optimistic update
+    if (targetPhase === 'LOST') {
+      setContacts(prev => prev.filter(c => !ids.includes(c.id)))
+    } else {
+      setContacts(prev => prev.map(c => ids.includes(c.id) ? { ...c, salesPhase: targetPhase } : c))
+    }
+    setSelectedIds(new Set())
+
+    try {
+      const results = await Promise.all(
+        ids.map(id =>
+          fetch(`/api/contacts/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ salesPhase: targetPhase }),
+          })
+        )
+      )
+      if (results.some(r => !r.ok)) throw new Error()
+    } catch {
+      // Rollback
+      if (targetPhase === 'LOST') {
+        setContacts(prev => [...prev, ...oldContacts])
+      } else {
+        setContacts(prev => prev.map(c => {
+          const old = oldContacts.find(o => o.id === c.id)
+          return old ? { ...c, salesPhase: old.salesPhase } : c
+        }))
+      }
+    } finally {
+      setBulkMoving(false)
+    }
+  }
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 8 },
@@ -143,9 +211,7 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
     const contact = contacts.find(c => c.id === contactId)
     if (!contact || contact.salesPhase === newPhase) return
 
-    // Optimistic update
     if (newPhase === 'LOST') {
-      // Remove from board
       setContacts(prev => prev.filter(c => c.id !== contactId))
     } else {
       setContacts(prev => prev.map(c => c.id === contactId ? { ...c, salesPhase: newPhase } : c))
@@ -159,7 +225,6 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
       })
       if (!res.ok) throw new Error()
     } catch {
-      // Rollback on error
       if (newPhase === 'LOST') {
         setContacts(prev => [...prev, contact])
       } else {
@@ -182,11 +247,47 @@ export default function PipelineBoard({ initialContacts }: { initialContacts: Co
               key={phase.value}
               phase={phase}
               contacts={contacts.filter(c => c.salesPhase === phase.value)}
+              selectedIds={selectedIds}
+              onToggle={toggleSelect}
             />
           ))}
         </div>
       </div>
       {activeContact && <LostDropZone />}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && !activeContact && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 px-4 py-3 safe-area-inset-bottom">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">{selectedIds.size}件 選択中</span>
+              <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600">選択解除</button>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {ALL_MOVE_TARGETS.map(t => {
+                // Hide phases where all selected contacts already are
+                const allInThisPhase = Array.from(selectedIds).every(id => contacts.find(c => c.id === id)?.salesPhase === t.value)
+                if (allInThisPhase) return null
+                return (
+                  <button
+                    key={t.value}
+                    onClick={() => bulkMove(t.value)}
+                    disabled={bulkMoving}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 ${
+                      t.value === 'LOST'
+                        ? 'border-red-200 text-red-600 hover:bg-red-50'
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {bulkMoving ? '移動中...' : `→ ${t.label}`}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <DragOverlay>
         {activeContact ? (
           <div className="w-56">
