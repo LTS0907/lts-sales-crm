@@ -24,7 +24,7 @@ interface InvoiceModalProps {
 }
 
 export default function InvoiceModal({ isOpen, onClose, contact, driveFolderId, onDriveFolderCreated }: InvoiceModalProps) {
-  const [type, setType] = useState<'invoice' | 'estimate'>('estimate')
+  const [type, setType] = useState<'invoice' | 'estimate' | 'receipt'>('estimate')
   const [subject, setSubject] = useState('')
   const [items, setItems] = useState<InvoiceItem[]>([
     { date: '', description: '', quantity: 1, unit: '式', unitPrice: 0 },
@@ -118,7 +118,7 @@ export default function InvoiceModal({ isOpen, onClose, contact, driveFolderId, 
       }
 
       // Set default email content
-      const typeLabel = type === 'invoice' ? '請求書' : '見積書'
+      const typeLabel = type === 'invoice' ? '請求書' : type === 'receipt' ? '領収書' : '見積書'
       setEmailSubject(`【${contact.company || contact.name}様】${typeLabel}のご送付`)
       setEmailBody(`${contact.company || contact.name}様
 
@@ -201,7 +201,7 @@ TEL: 048-954-9105
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="font-bold text-gray-900 text-lg">
-            {createdInvoice ? '作成完了' : '見積書・請求書作成'}
+            {createdInvoice ? '作成完了' : '見積書・請求書・領収書作成'}
           </h2>
           <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg">
             ✕
@@ -324,6 +324,16 @@ TEL: 048-954-9105
                   >
                     請求書
                   </button>
+                  <button
+                    onClick={() => setType('receipt')}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      type === 'receipt'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    領収書
+                  </button>
                 </div>
               </div>
 
@@ -350,84 +360,105 @@ TEL: 048-954-9105
                 />
               </div>
 
-              {/* Items */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs text-gray-500">明細</label>
-                  <button
-                    onClick={addItem}
-                    className="text-xs text-blue-600 hover:text-blue-700"
-                  >
-                    + 行を追加
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {items.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-start">
-                      <input
-                        type="text"
-                        value={item.date}
-                        onChange={e => updateItem(index, 'date', e.target.value)}
-                        placeholder="日付"
-                        className="w-20 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white"
-                      />
-                      <input
-                        type="text"
-                        value={item.description}
-                        onChange={e => updateItem(index, 'description', e.target.value)}
-                        placeholder="内容"
-                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white"
-                      />
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={e => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                        className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-right"
-                      />
-                      <input
-                        type="text"
-                        value={item.unit}
-                        onChange={e => updateItem(index, 'unit', e.target.value)}
-                        className="w-12 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-center"
-                      />
-                      <input
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={e => updateItem(index, 'unitPrice', parseInt(e.target.value) || 0)}
-                        placeholder="単価"
-                        className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-right"
-                      />
-                      <span className="w-24 text-xs text-gray-600 py-1.5 text-right">
-                        ¥{(item.quantity * item.unitPrice).toLocaleString()}
-                      </span>
-                      {items.length > 1 && (
-                        <button
-                          onClick={() => removeItem(index)}
-                          className="text-red-400 hover:text-red-600 px-1"
-                        >
-                          ✕
-                        </button>
-                      )}
+              {/* Items (見積書・請求書のみ) */}
+              {type !== 'receipt' && (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-gray-500">明細</label>
+                      <button
+                        onClick={addItem}
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        + 行を追加
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      {items.map((item, index) => (
+                        <div key={index} className="flex gap-2 items-start">
+                          <input
+                            type="text"
+                            value={item.date}
+                            onChange={e => updateItem(index, 'date', e.target.value)}
+                            placeholder="日付"
+                            className="w-20 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white"
+                          />
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={e => updateItem(index, 'description', e.target.value)}
+                            placeholder="内容"
+                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white"
+                          />
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={e => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                            className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-right"
+                          />
+                          <input
+                            type="text"
+                            value={item.unit}
+                            onChange={e => updateItem(index, 'unit', e.target.value)}
+                            className="w-12 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-center"
+                          />
+                          <input
+                            type="number"
+                            value={item.unitPrice}
+                            onChange={e => updateItem(index, 'unitPrice', parseInt(e.target.value) || 0)}
+                            placeholder="単価"
+                            className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-900 bg-white text-right"
+                          />
+                          <span className="w-24 text-xs text-gray-600 py-1.5 text-right">
+                            ¥{(item.quantity * item.unitPrice).toLocaleString()}
+                          </span>
+                          {items.length > 1 && (
+                            <button
+                              onClick={() => removeItem(index)}
+                              className="text-red-400 hover:text-red-600 px-1"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Totals */}
-              <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">小計</span>
-                  <span className="text-gray-700">¥{subtotal.toLocaleString()}</span>
+                  {/* Totals */}
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">小計</span>
+                      <span className="text-gray-700">¥{subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">消費税 (10%)</span>
+                      <span className="text-gray-700">¥{tax.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-1">
+                      <span className="text-gray-700">合計</span>
+                      <span className="text-gray-900">¥{total.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* 領収書用の金額入力 */}
+              {type === 'receipt' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">金額（税込）</label>
+                  <input
+                    type="number"
+                    value={items[0]?.unitPrice || 0}
+                    onChange={e => updateItem(0, 'unitPrice', parseInt(e.target.value) || 0)}
+                    placeholder="金額を入力"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white text-right"
+                  />
+                  {items[0]?.unitPrice > 0 && (
+                    <p className="text-right text-sm font-bold text-gray-700 mt-2">¥{items[0].unitPrice.toLocaleString()}</p>
+                  )}
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">消費税 (10%)</span>
-                  <span className="text-gray-700">¥{tax.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-1">
-                  <span className="text-gray-700">合計</span>
-                  <span className="text-gray-900">¥{total.toLocaleString()}</span>
-                </div>
-              </div>
+              )}
 
               {/* Notes */}
               <div>

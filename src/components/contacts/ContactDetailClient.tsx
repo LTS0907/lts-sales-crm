@@ -410,7 +410,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                 onClick={() => setInvoiceModalOpen(true)}
                 className="px-3 py-1 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50"
               >
-                📄 見積/請求
+                📄 見積/請求/領収
               </button>
               <Link href={`/contacts/${contact.id}/edit`} className="px-3 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">編集</Link>
               <button onClick={deleteContact} className="px-3 py-1 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">削除</button>
