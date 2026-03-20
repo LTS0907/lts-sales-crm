@@ -70,9 +70,16 @@ export default function InvoiceModal({ isOpen, onClose, contact, driveFolderId, 
       alert('件名を入力してください')
       return false
     }
-    if (items.length === 0 || items.every(item => !item.description.trim())) {
-      alert('明細を入力してください')
-      return false
+    if (type === 'receipt') {
+      if (!items[0]?.unitPrice || items[0].unitPrice <= 0) {
+        alert('金額を入力してください')
+        return false
+      }
+    } else {
+      if (items.length === 0 || items.every(item => !item.description.trim())) {
+        alert('明細を入力してください')
+        return false
+      }
     }
     return true
   }
