@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*    seed.ts                                           :::      ::::::::    */
+/*                                                      :+:      :+:    :+:  */
+/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
+/*                                                    +#+#+#+#+#+   +#+       */
+/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
+/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
+/*                                                                            */
+/*    © Life Time Support Inc.                                           */
+/*                                                                            */
+/* ************************************************************************** */
 import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
 import { fileURLToPath } from 'url'

@@ -1,4 +1,11 @@
 {
+  "_header": {
+    "file": "settings.local.json",
+    "by": "Claude (LTS)",
+    "created": "2026/03/26 01:47",
+    "updated": "2026/03/26 01:47",
+    "copyright": "© Life Time Support Inc."
+  },
   "permissions": {
     "allow": [
       "Bash(npx prisma:*)",
