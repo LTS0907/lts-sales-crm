@@ -56,8 +56,8 @@ export default async function Dashboard() {
 
   // アラート対象：フェーズ最終更新から14日以上経過 & フェーズが終了していない
   const alertContacts = contacts.filter(c => {
-    // 終了フェーズはアラート対象外
-    if (c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST' || c.salesPhase === 'COMPLETED') {
+    // リード・終了フェーズはアラート対象外
+    if (c.salesPhase === 'LEAD' || c.salesPhase === 'CONTRACTED' || c.salesPhase === 'PAID' || c.salesPhase === 'LOST' || c.salesPhase === 'COMPLETED') {
       return false
     }
     // フェーズ変更日から経過日数を計算（未設定時はupdatedAtで代用）
