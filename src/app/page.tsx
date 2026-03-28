@@ -69,15 +69,6 @@ export default async function Dashboard() {
     return daysB - daysA // 古い順
   })
 
-  // フォローアップ期限が近い/過ぎている
-  const followUpAlerts = contacts.filter(c => {
-    if (!c.followUpDate) return false
-    const daysUntil = -getDaysSince(c.followUpDate)
-    return daysUntil <= 3 // 3日以内または期限切れ
-  }).sort((a, b) => {
-    return new Date(a.followUpDate!).getTime() - new Date(b.followUpDate!).getTime()
-  })
-
   return (
     <div className="p-6">
       {/* アラートセクション（常に表示） */}
@@ -120,38 +111,9 @@ export default async function Dashboard() {
               </div>
             )}
 
-            {/* フォローアップ期限アラート */}
-            {followUpAlerts.length > 0 && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-orange-700 mb-3 flex items-center gap-2">
-                  📅 フォローアップ期限
-                  <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs">{followUpAlerts.length}名</span>
-                </h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {followUpAlerts.slice(0, 10).map(c => {
-                    const daysUntil = -getDaysSince(c.followUpDate!)
-                    return (
-                      <Link key={c.id} href={`/contacts/${c.id}`}>
-                        <div className="bg-white rounded-lg p-3 hover:shadow-md transition-shadow border border-orange-100">
-                          <div className="flex items-center justify-between">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
-                              {c.company && <p className="text-xs text-gray-500 truncate">{c.company}</p>}
-                            </div>
-                            <span className={`text-xs font-bold whitespace-nowrap ml-2 ${daysUntil < 0 ? 'text-red-600' : 'text-orange-600'}`}>
-                              {daysUntil < 0 ? `${-daysUntil}日超過` : daysUntil === 0 ? '今日' : `${daysUntil}日後`}
-                            </span>
-                          </div>
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </div>
 
-          {alertContacts.length === 0 && followUpAlerts.length === 0 && (
+          {alertContacts.length === 0 && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
               <p className="text-sm text-green-700">全員14日以内にアプローチ済みです</p>
             </div>
