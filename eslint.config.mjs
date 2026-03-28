@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*    eslint.config.mjs                                 :::      ::::::::    */
+/*                                                      :+:      :+:    :+:  */
+/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
+/*                                                    +#+#+#+#+#+   +#+       */
+/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
+/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
+/*                                                                            */
+/*    © Life Time Support Inc.                                           */
+/*                                                                            */
+/* ************************************************************************** */
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";

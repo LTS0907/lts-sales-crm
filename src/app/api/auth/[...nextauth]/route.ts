@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*    route.ts                                          :::      ::::::::    */
+/*                                                      :+:      :+:    :+:  */
+/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
+/*                                                    +#+#+#+#+#+   +#+       */
+/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
+/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
+/*                                                                            */
+/*    © Life Time Support Inc.                                           */
+/*                                                                            */
+/* ************************************************************************** */
 import NextAuth, { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 

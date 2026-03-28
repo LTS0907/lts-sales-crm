@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*    route.ts                                          :::      ::::::::    */
+/*                                                      :+:      :+:    :+:  */
+/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
+/*                                                    +#+#+#+#+#+   +#+       */
+/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
+/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
+/*                                                                            */
+/*    © Life Time Support Inc.                                           */
+/*                                                                            */
+/* ************************************************************************** */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
