@@ -50,6 +50,7 @@ model Contact {
   Note                Note[]
   ServicePhase        ServicePhase[]
   TaskLink            TaskLink[]
+  Subscription        Subscription[]
 }
 
 model Exchange {
@@ -140,4 +141,43 @@ model TaskLink {
   presetLabel  String?
   createdAt    DateTime @default(now())
   Contact      Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id             String          @id @default(cuid())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  contactId      String
+  serviceName    String
+  billingType    String          // "FIXED" or "VARIABLE"
+  fixedAmount    Int?
+  description    String
+  invoiceSubject String
+  status         String          @default("ACTIVE") // ACTIVE / PAUSED / CANCELLED
+  startDate      DateTime
+  endDate        DateTime?
+  cancelledAt    DateTime?
+  notes          String?
+  Contact        Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  BillingRecord  BillingRecord[]
+}
+
+model BillingRecord {
+  id              String        @id @default(cuid())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  subscriptionId  String
+  billingMonth    String        // "2026-04" format
+  amount          Int?
+  amountConfirmed Boolean       @default(false)
+  status          String        @default("PENDING") // PENDING / GENERATED / SENT / DOWNLOADED
+  spreadsheetId   String?
+  spreadsheetUrl  String?
+  generatedAt     DateTime?
+  sentAt          DateTime?
+  sentMethod      String?       // "EMAIL" / "PDF_DOWNLOAD"
+  errorMessage    String?
+  Subscription    Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, billingMonth])
 }
