@@ -30,7 +30,10 @@ function getDaysSince(date: Date | null): number {
 }
 
 export default async function Dashboard() {
-  const [contacts, servicePhases] = await Promise.all([
+  const now = new Date()
+  const currentBillingMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const [contacts, servicePhases, billingRecords] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -51,6 +54,10 @@ export default async function Dashboard() {
     }),
     prisma.servicePhase.findMany({
       include: { Contact: { select: { id: true, name: true, company: true } } },
+    }),
+    prisma.billingRecord.findMany({
+      where: { billingMonth: currentBillingMonth },
+      select: { status: true, amountConfirmed: true },
     }),
   ])
 
@@ -78,6 +85,44 @@ export default async function Dashboard() {
           </h2>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 請求書アラート */}
+            {billingRecords.length > 0 && (() => {
+              const needsInput = billingRecords.filter(r => !r.amountConfirmed).length
+              const unsent = billingRecords.filter(r => r.status === 'GENERATED').length
+              const sent = billingRecords.filter(r => r.status === 'SENT' || r.status === 'DOWNLOADED').length
+              const showAlert = needsInput > 0 || unsent > 0
+
+              return showAlert ? (
+                <Link href="/subscriptions/billing" className="block">
+                  <div className={`rounded-xl border p-4 hover:shadow-md transition-shadow ${needsInput > 0 ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      📄 請求書アラート（{currentBillingMonth}）
+                    </h3>
+                    <div className="space-y-1.5">
+                      {needsInput > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-red-500 rounded-full" />
+                          <span className="text-sm text-red-700">金額未入力: {needsInput}件</span>
+                        </div>
+                      )}
+                      {unsent > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+                          <span className="text-sm text-yellow-700">未送信: {unsent}件</span>
+                        </div>
+                      )}
+                      {sent > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-green-500 rounded-full" />
+                          <span className="text-sm text-green-700">送信済: {sent}件</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ) : null
+            })()}
+
             {/* アプローチ期限アラート */}
             {alertContacts.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">

@@ -19,6 +19,10 @@ const nav = [
     { href: '/crm/emails', label: 'メール管理', icon: '✉️' },
     { href: '/crm/followups', label: 'フォローアップ', icon: '🔔' },
   ]},
+  { section: '請求管理', items: [
+    { href: '/subscriptions', label: 'サブスク管理', icon: '🔄' },
+    { href: '/subscriptions/billing', label: '月次請求', icon: '📄' },
+  ]},
 ]
 
 interface SidebarProps {
