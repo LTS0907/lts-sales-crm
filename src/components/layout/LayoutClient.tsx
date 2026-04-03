@@ -1,10 +1,17 @@
 'use client'
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
 import TaskPanel from './TaskPanel'
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const pathname = usePathname()
+
+  // Public pages (signing page) - render without sidebar
+  if (pathname?.startsWith('/sign')) {
+    return <>{children}</>
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

@@ -1,0 +1,81 @@
+{
+  "templateName": "社内AI活用研修契約書（エントリープラン）",
+  "fields": [
+    {
+      "id": "f1_company_inline",
+      "type": "SIGNER_TEXT",
+      "label": "甲（会社名）※第1条",
+      "page": 0,
+      "x": 6.5,
+      "y": 24,
+      "width": 30,
+      "height": 2.5,
+      "required": true,
+      "prefill": "{{company}}",
+      "signer": "CLIENT"
+    },
+    {
+      "id": "f2_company",
+      "type": "SIGNER_TEXT",
+      "label": "甲・会社名",
+      "page": 1,
+      "x": 13,
+      "y": 68.5,
+      "width": 22,
+      "height": 2.5,
+      "required": true,
+      "prefill": "{{company}}",
+      "signer": "CLIENT"
+    },
+    {
+      "id": "f3_address",
+      "type": "SIGNER_TEXT",
+      "label": "甲・所在地",
+      "page": 1,
+      "x": 13,
+      "y": 72,
+      "width": 22,
+      "height": 2.5,
+      "required": true,
+      "signer": "CLIENT"
+    },
+    {
+      "id": "f4_representative",
+      "type": "SIGNER_TEXT",
+      "label": "甲・代表者",
+      "page": 1,
+      "x": 13,
+      "y": 75.5,
+      "width": 22,
+      "height": 2.5,
+      "required": true,
+      "prefill": "{{name}}",
+      "signer": "CLIENT"
+    },
+    {
+      "id": "f5_date",
+      "type": "DATE",
+      "label": "甲・日付",
+      "page": 1,
+      "x": 10,
+      "y": 79,
+      "width": 22,
+      "height": 2.5,
+      "required": true,
+      "prefill": "{{date}}",
+      "signer": "CLIENT"
+    },
+    {
+      "id": "f6_signature",
+      "type": "SIGNATURE",
+      "label": "甲の署名",
+      "page": 1,
+      "x": 7,
+      "y": 82.5,
+      "width": 30,
+      "height": 5,
+      "required": true,
+      "signer": "CLIENT"
+    }
+  ]
+}

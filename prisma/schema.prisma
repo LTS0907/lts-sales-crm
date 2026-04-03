@@ -51,6 +51,7 @@ model Contact {
   ServicePhase        ServicePhase[]
   TaskLink            TaskLink[]
   Subscription        Subscription[]
+  Contract            Contract[]
 }
 
 model Exchange {
@@ -180,4 +181,22 @@ model BillingRecord {
   Subscription    Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@unique([subscriptionId, billingMonth])
+}
+
+model Contract {
+  id                String    @id @default(cuid())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  contactId         String
+  templateName      String
+  status            String    @default("SENT") // SENT / VIEWED / SIGNED
+  signingToken      String    @unique
+  driveFileId       String?
+  signedDriveFileId String?
+  fieldValues       Json?
+  sentAt            DateTime  @default(now())
+  viewedAt          DateTime?
+  signedAt          DateTime?
+  signerIp          String?
+  Contact           Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
