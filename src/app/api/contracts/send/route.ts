@@ -6,7 +6,6 @@ import {
   getTemplatePdfBuffer,
   generateSigningToken,
   uploadToDrive,
-  stampSenderInfo,
 } from '@/lib/contract'
 
 export async function POST(request: Request) {
@@ -25,9 +24,8 @@ export async function POST(request: Request) {
     if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
     if (!contact.driveFolderId) return NextResponse.json({ error: 'Contact has no Drive folder' }, { status: 400 })
 
-    // Get template and stamp sender info
-    const rawPdfBuffer = getTemplatePdfBuffer(templateFileName)
-    const pdfBuffer = await stampSenderInfo(rawPdfBuffer)
+    // Get template PDF (no stamp — Google eSignature handles sender info)
+    const pdfBuffer = getTemplatePdfBuffer(templateFileName)
 
     // Upload PDF to Drive
     const displayName = templateFileName.replace(/\.pdf$/, '').trim()
