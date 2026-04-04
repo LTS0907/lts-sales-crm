@@ -168,6 +168,38 @@ export async function uploadToDrive(
   return res.data.id!
 }
 
+// ── Stamp Sender Info ──
+
+export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
+  const { PDFDocument: PDFDoc, rgb } = await import('pdf-lib')
+  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.ttf')
+  const fontBytes = fs.existsSync(fontPath) ? fs.readFileSync(fontPath) : null
+  if (!fontBytes) return pdfBuffer // no font, skip
+
+  const pdfDoc = await PDFDoc.load(pdfBuffer)
+  const font = await pdfDoc.embedFont(fontBytes)
+
+  // Get the last page (signature page)
+  const pageIndex = pdfDoc.getPageCount() - 1
+  const page = pdfDoc.getPage(pageIndex)
+  const { width, height } = page.getSize()
+
+  // Date: 乙の日付 — "日付：" label is at x=59.3%, text starts after it
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`
+  const dateX = (64 / 100) * width
+  const dateY = height - ((81 / 100) * height)
+  page.drawText(dateStr, { x: dateX, y: dateY, size: 10, font, color: rgb(0, 0, 0) })
+
+  // Signature: 乙の署名 — below date line
+  const sigX = (62 / 100) * width
+  const sigY = height - ((84 / 100) * height)
+  page.drawText('龍竹一生', { x: sigX, y: sigY, size: 14, font, color: rgb(0, 0, 0) })
+
+  const resultBytes = await pdfDoc.save()
+  return Buffer.from(resultBytes)
+}
+
 // ── Hash Utility ──
 
 export function hashBuffer(buf: Buffer): string {

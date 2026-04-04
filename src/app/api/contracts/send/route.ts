@@ -8,6 +8,7 @@ import {
   generateSigningToken,
   uploadToDrive,
   sendContractEmail,
+  stampSenderInfo,
 } from '@/lib/contract'
 
 export async function POST(request: Request) {
@@ -27,11 +28,14 @@ export async function POST(request: Request) {
     if (!contact.email) return NextResponse.json({ error: 'Contact has no email' }, { status: 400 })
 
     // Get template
-    const pdfBuffer = getTemplatePdfBuffer(templateFileName)
+    const rawPdfBuffer = getTemplatePdfBuffer(templateFileName)
     const fieldsConfig = getFieldsConfig(templateFileName)
     if (!fieldsConfig || fieldsConfig.fields.length === 0) {
       return NextResponse.json({ error: 'Template has no field definitions. Please set up fields first.' }, { status: 400 })
     }
+
+    // Stamp sender (LTS) info onto PDF
+    const pdfBuffer = await stampSenderInfo(rawPdfBuffer)
 
     // Upload PDF to Drive (if contact has a folder)
     let driveFileId: string | null = null
