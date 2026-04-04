@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTemplatePdfBuffer, getFieldsConfig, resolvePrefill } from '@/lib/contract'
+import { getTemplatePdfBuffer, getFieldsConfig, resolvePrefill, stampSenderInfo } from '@/lib/contract'
 import type { SigningData } from '@/types/contract'
 
 export async function GET(
@@ -36,8 +36,9 @@ export async function GET(
       })
     }
 
-    // Load template PDF and fields
-    const pdfBuffer = getTemplatePdfBuffer(contract.templateName)
+    // Load template PDF and stamp sender (LTS) info
+    const rawPdfBuffer = getTemplatePdfBuffer(contract.templateName)
+    const pdfBuffer = await stampSenderInfo(rawPdfBuffer)
     const fieldsConfig = getFieldsConfig(contract.templateName)
     const fields = fieldsConfig?.fields || []
 
