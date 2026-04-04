@@ -38,7 +38,12 @@ export function listTemplates(): ContractTemplate[] {
 }
 
 export function getTemplatePdfBuffer(fileName: string): Buffer {
-  const filePath = path.join(CONTRACTS_DIR, fileName)
+  // Try exact match first, then try trimmed filename (legacy records may have trailing spaces)
+  let filePath = path.join(CONTRACTS_DIR, fileName)
+  if (!fs.existsSync(filePath)) {
+    const trimmed = fileName.replace(/\s+\.pdf$/, '.pdf')
+    filePath = path.join(CONTRACTS_DIR, trimmed)
+  }
   if (!fs.existsSync(filePath)) throw new Error(`Template not found: ${fileName}`)
   return fs.readFileSync(filePath)
 }
@@ -181,9 +186,14 @@ export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
   pdfDoc.registerFontkit(fontkit)
   const font = await pdfDoc.embedFont(fontBytes)
 
-  // Get the last page (signature page)
-  const pageIndex = pdfDoc.getPageCount() - 1
-  const page = pdfDoc.getPage(pageIndex)
+  // Remove trailing blank pages (standard/premium plans have a blank 3rd page)
+  while (pdfDoc.getPageCount() > 2) {
+    pdfDoc.removePage(pdfDoc.getPageCount() - 1)
+  }
+
+  // Signature page is always page index 1 (2nd page, 0-indexed)
+  const signPageIndex = Math.min(1, pdfDoc.getPageCount() - 1)
+  const page = pdfDoc.getPage(signPageIndex)
   const { width, height } = page.getSize()
 
   // 乙の日付 — 「日付：」ラベルの右側
