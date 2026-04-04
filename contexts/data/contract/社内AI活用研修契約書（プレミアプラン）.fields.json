@@ -67,14 +67,15 @@
     },
     {
       "id": "f6_signature",
-      "type": "SIGNATURE",
-      "label": "甲の署名",
+      "type": "SIGNER_TEXT",
+      "label": "甲の署名（氏名）",
       "page": 1,
       "x": 13.6,
       "y": 82.4,
       "width": 30,
-      "height": 5,
+      "height": 2.5,
       "required": true,
+      "prefill": "{{name}}",
       "signer": "CLIENT"
     }
   ]
