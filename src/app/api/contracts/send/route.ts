@@ -4,10 +4,8 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import {
   getTemplatePdfBuffer,
-  getFieldsConfig,
   generateSigningToken,
   uploadToDrive,
-  sendContractEmail,
   stampSenderInfo,
 } from '@/lib/contract'
 
@@ -22,36 +20,27 @@ export async function POST(request: Request) {
 
     const contact = await prisma.contact.findUnique({
       where: { id: contactId },
-      select: { id: true, name: true, company: true, email: true, driveFolderId: true },
+      select: { id: true, name: true, company: true, driveFolderId: true },
     })
     if (!contact) return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
-    if (!contact.email) return NextResponse.json({ error: 'Contact has no email' }, { status: 400 })
+    if (!contact.driveFolderId) return NextResponse.json({ error: 'Contact has no Drive folder' }, { status: 400 })
 
-    // Get template
+    // Get template and stamp sender info
     const rawPdfBuffer = getTemplatePdfBuffer(templateFileName)
-    const fieldsConfig = getFieldsConfig(templateFileName)
-    if (!fieldsConfig || fieldsConfig.fields.length === 0) {
-      return NextResponse.json({ error: 'Template has no field definitions. Please set up fields first.' }, { status: 400 })
-    }
-
-    // Stamp sender (LTS) info onto PDF
     const pdfBuffer = await stampSenderInfo(rawPdfBuffer)
 
-    // Upload PDF to Drive (if contact has a folder)
-    let driveFileId: string | null = null
-    if (contact.driveFolderId) {
-      const displayName = templateFileName.replace(/\.pdf$/, '').trim()
-      driveFileId = await uploadToDrive(
-        session.accessToken,
-        `${displayName}_${contact.name}.pdf`,
-        pdfBuffer,
-        contact.driveFolderId
-      )
-    }
+    // Upload PDF to Drive
+    const displayName = templateFileName.replace(/\.pdf$/, '').trim()
+    const driveFileId = await uploadToDrive(
+      session.accessToken,
+      `${displayName}_${contact.name}.pdf`,
+      pdfBuffer,
+      contact.driveFolderId
+    )
 
-    // Create signing token and contract record
+    // Create contract record
     const signingToken = generateSigningToken()
-    const contract = await prisma.contract.create({
+    await prisma.contract.create({
       data: {
         contactId: contact.id,
         templateName: templateFileName,
@@ -61,29 +50,12 @@ export async function POST(request: Request) {
       },
     })
 
-    // Determine signing URL
-    const baseUrl = process.env.NEXTAUTH_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-      || 'http://localhost:3000'
-    const signingUrl = `${baseUrl}/sign/${signingToken}`
-
-    // Send email
-    const displayName = templateFileName.replace(/\.pdf$/, '').trim()
-    await sendContractEmail(
-      session.accessToken,
-      contact.email,
-      contact.name,
-      displayName,
-      signingUrl
-    )
-
     return NextResponse.json({
       success: true,
-      contractId: contract.id,
-      signingUrl,
+      driveFileId,
     })
   } catch (error: unknown) {
-    console.error('Contract send error:', error)
+    console.error('Contract create error:', error)
     const msg = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

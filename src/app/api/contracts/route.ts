@@ -23,9 +23,7 @@ export async function GET(request: NextRequest) {
       templateName: true,
       status: true,
       sentAt: true,
-      viewedAt: true,
-      signedAt: true,
-      signingToken: true,
+      driveFileId: true,
     },
   })
 
