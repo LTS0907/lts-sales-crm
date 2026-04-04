@@ -186,17 +186,58 @@ export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
   const page = pdfDoc.getPage(pageIndex)
   const { width, height } = page.getSize()
 
-  // Date: 乙の日付 — "日付：" label is at x=59.3%, text starts after it
+  // 乙の日付 — 「日付：」ラベルの右側
   const now = new Date()
   const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`
-  const dateX = (64 / 100) * width
-  const dateY = height - ((81 / 100) * height)
+  const dateX = (62 / 100) * width
+  const dateY = height - ((79 / 100) * height)
   page.drawText(dateStr, { x: dateX, y: dateY, size: 10, font, color: rgb(0, 0, 0) })
 
-  // Signature: 乙の署名 — below date line
-  const sigX = (62 / 100) * width
-  const sigY = height - ((84 / 100) * height)
-  page.drawText('龍竹一生', { x: sigX, y: sigY, size: 14, font, color: rgb(0, 0, 0) })
+  // 赤い印鑑風スタンプ — 乙の代表者名の右横
+  const sealSize = 40
+  const sealCenterX = (82 / 100) * width
+  const sealCenterY = height - ((76 / 100) * height)
+
+  // 外枠の円（赤）
+  page.drawCircle({
+    x: sealCenterX,
+    y: sealCenterY,
+    size: sealSize / 2,
+    borderColor: rgb(0.8, 0.1, 0.1),
+    borderWidth: 2,
+    color: undefined, // 透明（塗りつぶしなし）
+    opacity: 0.85,
+  })
+
+  // 内側の円（二重丸印鑑風）
+  page.drawCircle({
+    x: sealCenterX,
+    y: sealCenterY,
+    size: sealSize / 2 - 3,
+    borderColor: rgb(0.8, 0.1, 0.1),
+    borderWidth: 0.8,
+    color: undefined,
+    opacity: 0.85,
+  })
+
+  // 印鑑の文字「龍竹」（縦書き風に2文字を上下に配置）
+  const sealFontSize = 14
+  page.drawText('龍', {
+    x: sealCenterX - sealFontSize / 2,
+    y: sealCenterY + 4,
+    size: sealFontSize,
+    font,
+    color: rgb(0.8, 0.1, 0.1),
+    opacity: 0.85,
+  })
+  page.drawText('竹', {
+    x: sealCenterX - sealFontSize / 2,
+    y: sealCenterY - sealFontSize + 2,
+    size: sealFontSize,
+    font,
+    color: rgb(0.8, 0.1, 0.1),
+    opacity: 0.85,
+  })
 
   const resultBytes = await pdfDoc.save()
   return Buffer.from(resultBytes)
