@@ -33,6 +33,29 @@ export default function ContractSection({ contact }: ContractSectionProps) {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const handleDelete = async (contractId: string) => {
+    if (!confirm('この契約書を削除しますか？')) return
+    setDeleting(contractId)
+    try {
+      const res = await fetch('/api/contracts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        fetchContracts()
+      } else {
+        alert(data.error || '削除に失敗しました')
+      }
+    } catch {
+      alert('削除に失敗しました')
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   const fetchContracts = async () => {
     setLoading(true)
@@ -94,18 +117,27 @@ export default function ContractSection({ contact }: ContractSectionProps) {
                   <span>閲覧: {formatDate(c.viewedAt)}</span>
                   <span>署名: {formatDate(c.signedAt)}</span>
                 </div>
-                {c.status !== 'SIGNED' && (
+                <div className="flex items-center gap-3 mt-2">
+                  {c.status !== 'SIGNED' && (
+                    <button
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => {
+                        const url = `${window.location.origin}/sign/${c.signingToken}`
+                        navigator.clipboard.writeText(url)
+                        alert('署名リンクをコピーしました')
+                      }}
+                    >
+                      署名リンクをコピー
+                    </button>
+                  )}
                   <button
-                    className="mt-2 text-xs text-blue-600 hover:underline"
-                    onClick={() => {
-                      const url = `${window.location.origin}/sign/${c.signingToken}`
-                      navigator.clipboard.writeText(url)
-                      alert('署名リンクをコピーしました')
-                    }}
+                    className="text-xs text-red-500 hover:underline"
+                    disabled={deleting === c.id}
+                    onClick={() => handleDelete(c.id)}
                   >
-                    署名リンクをコピー
+                    {deleting === c.id ? '削除中...' : '削除'}
                   </button>
-                )}
+                </div>
               </div>
             )
           })}
