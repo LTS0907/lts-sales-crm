@@ -101,7 +101,9 @@ export async function buildSignedPdf(
   fieldValues: Record<string, string>,
   fontBytes: Buffer
 ): Promise<Buffer> {
+  const fontkit = (await import('@pdf-lib/fontkit')).default
   const pdfDoc = await PDFDocument.load(templateBuffer)
+  pdfDoc.registerFontkit(fontkit)
   const customFont = await pdfDoc.embedFont(fontBytes)
 
   for (const field of fields) {
@@ -172,11 +174,13 @@ export async function uploadToDrive(
 
 export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
   const { PDFDocument: PDFDoc, rgb } = await import('pdf-lib')
+  const fontkit = (await import('@pdf-lib/fontkit')).default
   const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.ttf')
   const fontBytes = fs.existsSync(fontPath) ? fs.readFileSync(fontPath) : null
   if (!fontBytes) return pdfBuffer // no font, skip
 
   const pdfDoc = await PDFDoc.load(pdfBuffer)
+  pdfDoc.registerFontkit(fontkit)
   const font = await pdfDoc.embedFont(fontBytes)
 
   // Get the last page (signature page)
@@ -237,7 +241,9 @@ function toJST(date: Date | null): string {
 
 export async function buildCertificatePdf(opts: CertificateOptions): Promise<Buffer> {
   const { PDFDocument, rgb } = await import('pdf-lib')
+  const fontkit = (await import('@pdf-lib/fontkit')).default
   const pdfDoc = await PDFDocument.create()
+  pdfDoc.registerFontkit(fontkit)
   const customFont = await pdfDoc.embedFont(opts.fontBytes)
 
   const page = pdfDoc.addPage([595.28, 841.89]) // A4
