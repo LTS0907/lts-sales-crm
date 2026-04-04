@@ -189,14 +189,14 @@ export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
   // 乙の日付 — 「日付：」ラベルの右側
   const now = new Date()
   const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`
-  const dateX = (62 / 100) * width
-  const dateY = height - ((79 / 100) * height)
+  const dateX = (60 / 100) * width
+  const dateY = height - ((82.5 / 100) * height)
   page.drawText(dateStr, { x: dateX, y: dateY, size: 10, font, color: rgb(0, 0, 0) })
 
-  // 赤い印鑑風スタンプ — 乙の代表者名の右横
+  // 赤い印鑑風スタンプ — 日付の下
   const sealSize = 40
-  const sealCenterX = (82 / 100) * width
-  const sealCenterY = height - ((76 / 100) * height)
+  const sealCenterX = (66 / 100) * width
+  const sealCenterY = height - ((88 / 100) * height)
 
   // 外枠の円（赤）
   page.drawCircle({
