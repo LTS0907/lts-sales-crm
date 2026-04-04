@@ -198,5 +198,10 @@ model Contract {
   viewedAt          DateTime?
   signedAt          DateTime?
   signerIp          String?
+  viewerIp          String?
+  signerUserAgent   String?
+  viewerUserAgent   String?
+  signedPdfHash     String?
+  certDriveFileId   String?
   Contact           Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }

@@ -4,7 +4,7 @@ import { getTemplatePdfBuffer, getFieldsConfig, resolvePrefill } from '@/lib/con
 import type { SigningData } from '@/types/contract'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
@@ -26,9 +26,13 @@ export async function GET(
 
     // Mark as viewed
     if (contract.status === 'SENT') {
+      const viewerIp = request.headers.get('x-forwarded-for')
+        || request.headers.get('x-real-ip')
+        || null
+      const viewerUserAgent = request.headers.get('user-agent') || null
       await prisma.contract.update({
         where: { id: contract.id },
-        data: { status: 'VIEWED', viewedAt: new Date() },
+        data: { status: 'VIEWED', viewedAt: new Date(), viewerIp, viewerUserAgent },
       })
     }
 

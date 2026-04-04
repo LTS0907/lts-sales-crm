@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { prisma } from '@/lib/prisma'
-import { getTemplatePdfBuffer, getFieldsConfig, buildSignedPdf, uploadToDrive } from '@/lib/contract'
+import { getTemplatePdfBuffer, getFieldsConfig, buildSignedPdf, uploadToDrive, hashBuffer, buildCertificatePdf } from '@/lib/contract'
 import { getAccessToken } from '@/lib/google-auth'
 
 export async function POST(
@@ -16,7 +16,7 @@ export async function POST(
     const contract = await prisma.contract.findUnique({
       where: { signingToken: token },
       include: {
-        Contact: { select: { name: true, company: true, driveFolderId: true } },
+        Contact: { select: { name: true, company: true, email: true, driveFolderId: true } },
       },
     })
 
@@ -52,11 +52,23 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to build signed PDF' }, { status: 500 })
     }
 
+    // Compute signed PDF hash
+    const signedPdfHash = hashBuffer(signedPdfBuffer)
+
+    // Get signer IP and UA
+    const signerIp = request.headers.get('x-forwarded-for')
+      || request.headers.get('x-real-ip')
+      || null
+    const signerUserAgent = request.headers.get('user-agent') || null
+
     // Upload signed PDF to Drive
     let signedDriveFileId: string | null = null
+    let certDriveFileId: string | null = null
+    let accessToken: string | null = null
+
     if (contract.Contact.driveFolderId) {
       try {
-        const accessToken = await getAccessToken()
+        accessToken = await getAccessToken()
         const displayName = contract.templateName.replace(/\.pdf$/, '').trim()
         signedDriveFileId = await uploadToDrive(
           accessToken,
@@ -69,20 +81,57 @@ export async function POST(
       }
     }
 
-    // Get signer IP
-    const signerIp = request.headers.get('x-forwarded-for')
-      || request.headers.get('x-real-ip')
-      || 'unknown'
+    // Build and upload certificate PDF
+    const signedAt = new Date()
+    try {
+      const certPdfBuffer = await buildCertificatePdf({
+        contractId: contract.id,
+        templateName: contract.templateName,
+        signedPdfHash,
+        contact: {
+          name: contract.Contact.name,
+          company: contract.Contact.company,
+          email: contract.Contact.email,
+        },
+        sentAt: contract.sentAt,
+        viewedAt: contract.viewedAt,
+        signedAt,
+        viewerIp: contract.viewerIp,
+        signerIp,
+        signerUserAgent,
+        fontBytes,
+      })
+
+      if (contract.Contact.driveFolderId) {
+        if (!accessToken) {
+          try { accessToken = await getAccessToken() } catch { /* skip */ }
+        }
+        if (accessToken) {
+          const displayName = contract.templateName.replace(/\.pdf$/, '').trim()
+          certDriveFileId = await uploadToDrive(
+            accessToken,
+            `${displayName}_${contract.Contact.name}_署名証明書.pdf`,
+            certPdfBuffer,
+            contract.Contact.driveFolderId
+          )
+        }
+      }
+    } catch (err) {
+      console.error('Certificate PDF error (non-fatal):', err)
+    }
 
     // Update contract
     await prisma.contract.update({
       where: { id: contract.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt,
         signedDriveFileId,
         fieldValues,
         signerIp,
+        signerUserAgent,
+        signedPdfHash,
+        certDriveFileId,
       },
     })
 

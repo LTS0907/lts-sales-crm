@@ -168,6 +168,151 @@ export async function uploadToDrive(
   return res.data.id!
 }
 
+// ── Hash Utility ──
+
+export function hashBuffer(buf: Buffer): string {
+  return crypto.createHash('sha256').update(buf).digest('hex')
+}
+
+// ── Certificate PDF ──
+
+type CertificateOptions = {
+  contractId: string
+  templateName: string
+  signedPdfHash: string
+  contact: { name: string; company: string | null; email: string | null }
+  sentAt: Date
+  viewedAt: Date | null
+  signedAt: Date
+  viewerIp: string | null
+  signerIp: string | null
+  signerUserAgent: string | null
+  fontBytes: Buffer
+}
+
+function toJST(date: Date | null): string {
+  if (!date) return '—'
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date).replace(/\//g, '-')
+}
+
+export async function buildCertificatePdf(opts: CertificateOptions): Promise<Buffer> {
+  const { PDFDocument, rgb } = await import('pdf-lib')
+  const pdfDoc = await PDFDocument.create()
+  const customFont = await pdfDoc.embedFont(opts.fontBytes)
+
+  const page = pdfDoc.addPage([595.28, 841.89]) // A4
+  const { width, height } = page.getSize()
+
+  const margin = 50
+  let y = height - 60
+
+  const drawText = (text: string, x: number, yPos: number, size: number, color = rgb(0, 0, 0)) => {
+    page.drawText(text, { x, y: yPos, size, font: customFont, color })
+  }
+
+  const drawLine = (yPos: number) => {
+    page.drawLine({
+      start: { x: margin, y: yPos },
+      end: { x: width - margin, y: yPos },
+      thickness: 0.5,
+      color: rgb(0.7, 0.7, 0.7),
+    })
+  }
+
+  const drawSection = (label: string, value: string, yPos: number): number => {
+    drawText(label, margin, yPos, 9, rgb(0.4, 0.4, 0.4))
+    const lines = value.match(/.{1,70}/g) || ['']
+    lines.forEach((line, i) => {
+      drawText(line, margin + 160, yPos - i * 14, 9)
+    })
+    return yPos - Math.max(lines.length * 14, 16)
+  }
+
+  // Title
+  drawText('電子署名 証明書', margin, y, 18)
+  y -= 30
+  drawLine(y)
+  y -= 20
+
+  // Contract info
+  y = drawSection('契約書名', opts.templateName.replace(/\.pdf$/, '').trim(), y)
+  y -= 4
+  y = drawSection('契約書ID', opts.contractId, y)
+  y -= 4
+  y = drawSection('ドキュメントハッシュ (SHA-256)', opts.signedPdfHash, y)
+  y -= 16
+  drawLine(y)
+  y -= 20
+
+  // Sender
+  drawText('送信者情報', margin, y, 11)
+  y -= 16
+  y = drawSection('会社名', '株式会社ライフタイムサポート', y)
+  y -= 4
+  y = drawSection('担当者', '龍竹一生', y)
+  y -= 4
+  y = drawSection('メールアドレス', 'ryouchiku@life-time-support.com', y)
+  y -= 16
+  drawLine(y)
+  y -= 20
+
+  // Signer
+  drawText('署名者情報', margin, y, 11)
+  y -= 16
+  y = drawSection('名前', opts.contact.name, y)
+  y -= 4
+  y = drawSection('会社名', opts.contact.company || '—', y)
+  y -= 4
+  y = drawSection('メールアドレス', opts.contact.email || '—', y)
+  y -= 16
+  drawLine(y)
+  y -= 20
+
+  // Timestamps
+  drawText('タイムスタンプ', margin, y, 11)
+  y -= 16
+  y = drawSection('送信日時', toJST(opts.sentAt), y)
+  y -= 4
+  y = drawSection('開封日時', toJST(opts.viewedAt), y)
+  y -= 4
+  y = drawSection('署名日時', toJST(opts.signedAt), y)
+  y -= 16
+  drawLine(y)
+  y -= 20
+
+  // Access info
+  drawText('アクセス情報', margin, y, 11)
+  y -= 16
+  y = drawSection('開封時IPアドレス', opts.viewerIp || '—', y)
+  y -= 4
+  y = drawSection('署名時IPアドレス', opts.signerIp || '—', y)
+  y -= 4
+  y = drawSection('署名デバイス (UA)', opts.signerUserAgent || '—', y)
+  y -= 24
+
+  // Footer
+  drawLine(y)
+  y -= 16
+  drawText(
+    'この証明書は株式会社ライフタイムサポートの電子契約システムにより自動生成されました。',
+    margin,
+    y,
+    8,
+    rgb(0.5, 0.5, 0.5)
+  )
+
+  const pdfBytes = await pdfDoc.save()
+  return Buffer.from(pdfBytes)
+}
+
 // ── Email Sending ──
 
 function createContractEmail(
