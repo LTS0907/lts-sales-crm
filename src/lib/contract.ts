@@ -109,7 +109,7 @@ export async function buildSignedPdf(
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(templateBuffer)
   pdfDoc.registerFontkit(fontkit)
-  const customFont = await pdfDoc.embedFont(fontBytes)
+  const customFont = await pdfDoc.embedFont(fontBytes, { subset: true })
 
   for (const field of fields) {
     const value = fieldValues[field.id]
@@ -184,7 +184,7 @@ export async function stampSenderInfo(pdfBuffer: Buffer): Promise<Buffer> {
 
   const pdfDoc = await PDFDocument.load(pdfBuffer)
   pdfDoc.registerFontkit(fontkit)
-  const font = await pdfDoc.embedFont(fontBytes)
+  const font = await pdfDoc.embedFont(fontBytes, { subset: true })
 
   // Remove trailing blank pages (standard/premium plans have a blank 3rd page)
   while (pdfDoc.getPageCount() > 2) {
@@ -291,7 +291,7 @@ function toJST(date: Date | null): string {
 export async function buildCertificatePdf(opts: CertificateOptions): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create()
   pdfDoc.registerFontkit(fontkit)
-  const customFont = await pdfDoc.embedFont(opts.fontBytes)
+  const customFont = await pdfDoc.embedFont(opts.fontBytes, { subset: true })
 
   const page = pdfDoc.addPage([595.28, 841.89]) // A4
   const { width, height } = page.getSize()
