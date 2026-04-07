@@ -2,6 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import RevenueByYearTable from '@/components/revenue/RevenueByYearTable'
+
+interface RevenueRow {
+  fiscalMonth: string
+  totalAmount: number
+}
 
 interface AR {
   id: string
@@ -39,9 +45,11 @@ function toDateInput(d: string | Date) {
 export default function ContactReceivableSection({
   contactId: _contactId,
   receivables: initialItems,
+  revenues = [],
 }: {
   contactId: string
   receivables: AR[]
+  revenues?: RevenueRow[]
 }) {
   const router = useRouter()
   const [items, setItems] = useState(initialItems)
@@ -86,15 +94,25 @@ export default function ContactReceivableSection({
 
   if (items.length === 0) {
     return (
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-10 text-center">
-        <p className="text-sm text-gray-500">売掛金はまだありません</p>
-        <p className="text-xs text-gray-400 mt-1">請求書を発行すると自動で登録されます</p>
+      <div className="space-y-4">
+        {revenues.length > 0 && (
+          <RevenueByYearTable rows={revenues} title="この顧客の売上" />
+        )}
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-10 text-center">
+          <p className="text-sm text-gray-500">売掛金はまだありません</p>
+          <p className="text-xs text-gray-400 mt-1">請求書を発行すると自動で登録されます</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
+      {/* 売上集計 */}
+      {revenues.length > 0 && (
+        <RevenueByYearTable rows={revenues} title="この顧客の売上" />
+      )}
+
       {/* Summary */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
