@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { getPhasesForService } from '@/lib/service-phases'
+import { refreshOverdueStatus } from '@/lib/accounts-receivable'
 
 const SERVICES = [
   { name: '生成AI活用セミナー', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500' },
@@ -33,7 +34,10 @@ export default async function Dashboard() {
   const now = new Date()
   const currentBillingMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-  const [contacts, servicePhases, billingRecords] = await Promise.all([
+  // 期日超過チェック（OPEN/PARTIAL → OVERDUE）
+  await refreshOverdueStatus()
+
+  const [contacts, servicePhases, billingRecords, receivables] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -59,7 +63,20 @@ export default async function Dashboard() {
       where: { billingMonth: currentBillingMonth },
       select: { status: true, amountConfirmed: true },
     }),
+    prisma.accountsReceivable.findMany({
+      where: { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } },
+      include: { Contact: { select: { id: true, name: true, company: true } } },
+      orderBy: [{ status: 'asc' }, { dueDate: 'asc' }],
+    }),
   ])
+
+  // 売掛サマリー
+  const arSummary = {
+    totalUnpaid: receivables.reduce((s, r) => s + (r.amount - r.paidAmount), 0),
+    countUnpaid: receivables.length,
+    overdue: receivables.filter(r => r.status === 'OVERDUE'),
+    overdueAmount: receivables.filter(r => r.status === 'OVERDUE').reduce((s, r) => s + (r.amount - r.paidAmount), 0),
+  }
 
   // アラート対象：フェーズ最終更新から14日以上経過 & フェーズが終了していない
   const alertContacts = contacts.filter(c => {
@@ -163,6 +180,92 @@ export default async function Dashboard() {
               <p className="text-sm text-green-700">全員14日以内にアプローチ済みです</p>
             </div>
           )}
+      </div>
+
+      {/* 売掛金セクション */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">💰 売掛金</h2>
+          <Link href="/accounts-receivable" className="text-xs text-blue-600 hover:underline">
+            すべて見る →
+          </Link>
+        </div>
+
+        {/* サマリー */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-xs text-gray-500">未収残高合計</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">
+              ¥{arSummary.totalUnpaid.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">{arSummary.countUnpaid}件</p>
+          </div>
+          <div className={`rounded-xl border p-5 ${arSummary.overdue.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+            <p className="text-xs text-gray-500">期日超過</p>
+            <p className={`text-2xl font-bold mt-1 ${arSummary.overdue.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+              ¥{arSummary.overdueAmount.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">{arSummary.overdue.length}件</p>
+          </div>
+        </div>
+
+        {/* リスト */}
+        {receivables.length === 0 ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+            <p className="text-sm text-gray-500">未収の売掛金はありません</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
+                  <th className="text-left px-4 py-2 font-medium">顧客</th>
+                  <th className="text-left px-4 py-2 font-medium">件名</th>
+                  <th className="text-right px-4 py-2 font-medium">残高</th>
+                  <th className="text-left px-4 py-2 font-medium">支払期日</th>
+                  <th className="text-left px-4 py-2 font-medium">状態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receivables.slice(0, 10).map(ar => {
+                  const remaining = ar.amount - ar.paidAmount
+                  const meta =
+                    ar.status === 'OVERDUE' ? { label: '期日超過', color: 'bg-red-100 text-red-700' } :
+                    ar.status === 'PARTIAL' ? { label: '一部入金', color: 'bg-yellow-100 text-yellow-700' } :
+                    { label: '未収', color: 'bg-blue-100 text-blue-700' }
+                  return (
+                    <tr key={ar.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm">
+                        <Link href={`/contacts/${ar.contactId}`} className="text-blue-600 hover:underline font-medium">
+                          {ar.Contact.company || ar.Contact.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {ar.invoiceSubject || ar.serviceName}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium">¥{remaining.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {new Date(ar.dueDate).toLocaleDateString('ja-JP')}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${meta.color}`}>
+                          {meta.label}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {receivables.length > 10 && (
+              <div className="px-4 py-2 text-center bg-gray-50 border-t border-gray-100">
+                <Link href="/accounts-receivable" className="text-xs text-blue-600 hover:underline">
+                  他 {receivables.length - 10}件を見る →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 進捗管理セクション */}
