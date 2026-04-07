@@ -2,7 +2,7 @@ import { google } from 'googleapis'
 
 const TEMPLATE_SPREADSHEET_ID = '1nlcKSgzJehTDBRBCKtoLxeIyppUsh6ARhBa3YIwMcDM'
 const RECEIPT_TEMPLATE_ID = '1MKEOTY-WDryVejLrFa6QEqgbIn2E4kcr'
-const DRIVE_PARENT_FOLDER_ID = '1Z_tAkH5jEk5MVMGaajArqcLKI2dqbu40'
+const DRIVE_PARENT_FOLDER_ID = '1DoOMSUitZ3Sv6HowcGlTS2lMcF2wxfJI'
 
 export interface InvoiceItem {
   date: string

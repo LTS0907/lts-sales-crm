@@ -16,7 +16,7 @@ import { google } from 'googleapis'
 import { authOptions } from '../auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 
-const PARENT_FOLDER_ID = '1Z_tAkH5jEk5MVMGaajArqcLKI2dqbu40'
+const PARENT_FOLDER_ID = '1DoOMSUitZ3Sv6HowcGlTS2lMcF2wxfJI'
 
 function getDriveClient(accessToken: string) {
   const oauth2Client = new google.auth.OAuth2()
