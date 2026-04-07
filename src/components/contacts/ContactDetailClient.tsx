@@ -943,6 +943,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
         <ContactReceivableSection
           contactId={contact.id}
           receivables={contact.AccountsReceivable || []}
+          revenues={contact.Revenue || []}
         />
       )}
 

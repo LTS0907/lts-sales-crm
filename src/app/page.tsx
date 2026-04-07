@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { getPhasesForService } from '@/lib/service-phases'
 import { refreshOverdueStatus } from '@/lib/accounts-receivable'
+import RevenueByYearTable from '@/components/revenue/RevenueByYearTable'
 
 const SERVICES = [
   { name: '生成AI活用セミナー', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500' },
@@ -37,7 +38,7 @@ export default async function Dashboard() {
   // 期日超過チェック（OPEN/PARTIAL → OVERDUE）
   await refreshOverdueStatus()
 
-  const [contacts, servicePhases, billingRecords, receivables] = await Promise.all([
+  const [contacts, servicePhases, billingRecords, receivables, revenues] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -67,6 +68,9 @@ export default async function Dashboard() {
       where: { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } },
       include: { Contact: { select: { id: true, name: true, company: true } } },
       orderBy: [{ status: 'asc' }, { dueDate: 'asc' }],
+    }),
+    prisma.revenue.findMany({
+      select: { fiscalMonth: true, totalAmount: true },
     }),
   ])
 
@@ -266,6 +270,14 @@ export default async function Dashboard() {
             )}
           </div>
         )}
+      </div>
+
+      {/* 売上集計セクション */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">📈 売上集計（年別×月別）</h2>
+        </div>
+        <RevenueByYearTable rows={revenues} title="全社売上" />
       </div>
 
       {/* 進捗管理セクション */}
