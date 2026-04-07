@@ -43,10 +43,120 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-export default function ReceivablesList({ items: initialItems }: { items: AR[] }) {
+interface ContactOption {
+  id: string
+  name: string
+  company: string | null
+}
+
+function calcDefaultDueDate(invoicedAt: string): string {
+  const d = new Date(invoicedAt)
+  const due = new Date(d.getFullYear(), d.getMonth() + 2, 0)
+  return `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`
+}
+
+export default function ReceivablesList({ items: initialItems, contacts }: { items: AR[]; contacts: ContactOption[] }) {
   const router = useRouter()
   const [items, setItems] = useState(initialItems)
   const [filter, setFilter] = useState('UNPAID')
+  const [showForm, setShowForm] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // フォーム状態
+  const [contactSearch, setContactSearch] = useState('')
+  const [showContactDropdown, setShowContactDropdown] = useState(false)
+  const [selectedContact, setSelectedContact] = useState<ContactOption | null>(null)
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+  const [serviceName, setServiceName] = useState('')
+  const [invoiceSubject, setInvoiceSubject] = useState('')
+  const [amountStr, setAmountStr] = useState('')
+  const [invoicedAt, setInvoicedAt] = useState(todayStr)
+  const [dueDate, setDueDate] = useState(calcDefaultDueDate(todayStr))
+  const [notes, setNotes] = useState('')
+  const [paidAmountStr, setPaidAmountStr] = useState('')
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.toLowerCase().trim()
+    if (!q) return contacts.slice(0, 20)
+    return contacts
+      .filter(c => c.name.toLowerCase().includes(q) || (c.company || '').toLowerCase().includes(q))
+      .slice(0, 20)
+  }, [contacts, contactSearch])
+
+  function resetForm() {
+    setSelectedContact(null)
+    setContactSearch('')
+    setServiceName('')
+    setInvoiceSubject('')
+    setAmountStr('')
+    setInvoicedAt(todayStr)
+    setDueDate(calcDefaultDueDate(todayStr))
+    setNotes('')
+    setPaidAmountStr('')
+    setFormError('')
+  }
+
+  function handleInvoicedAtChange(v: string) {
+    setInvoicedAt(v)
+    // 期日も連動して更新（手で変えてないなら）
+    if (v) setDueDate(calcDefaultDueDate(v))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError('')
+    if (!selectedContact) { setFormError('顧客を選択してください'); return }
+    if (!serviceName.trim()) { setFormError('件名を入力してください'); return }
+    const amount = parseInt(amountStr)
+    if (!amount || amount <= 0) { setFormError('金額を正しく入力してください'); return }
+    const paidAmount = paidAmountStr ? parseInt(paidAmountStr) : 0
+    if (paidAmount < 0 || paidAmount > amount) { setFormError('入金額が不正です'); return }
+
+    setSaving(true)
+    try {
+      const res = await fetch('/api/accounts-receivable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: selectedContact.id,
+          serviceName: serviceName.trim(),
+          invoiceSubject: invoiceSubject.trim() || serviceName.trim(),
+          amount,
+          invoicedAt,
+          dueDate,
+          notes: notes.trim() || undefined,
+          paidAmount: paidAmount > 0 ? paidAmount : undefined,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || '登録に失敗しました')
+      }
+      const created = await res.json()
+      // ローカル state に追加
+      setItems([
+        {
+          ...created,
+          invoicedAt: typeof created.invoicedAt === 'string' ? created.invoicedAt : new Date(created.invoicedAt).toISOString(),
+          dueDate: typeof created.dueDate === 'string' ? created.dueDate : new Date(created.dueDate).toISOString(),
+          paidAt: created.paidAt ? (typeof created.paidAt === 'string' ? created.paidAt : new Date(created.paidAt).toISOString()) : null,
+          Contact: selectedContact,
+        },
+        ...items,
+      ])
+      setShowForm(false)
+      resetForm()
+      router.refresh()
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : '登録に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
   const [editingDueId, setEditingDueId] = useState<string | null>(null)
   const [editingDueValue, setEditingDueValue] = useState('')
 
@@ -132,19 +242,144 @@ export default function ReceivablesList({ items: initialItems }: { items: AR[] }
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {FILTERS.map(f => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
-            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-              filter === f.key
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}>
-            {f.label}
-          </button>
-        ))}
+      {/* Add button + Filter tabs */}
+      <div className="flex gap-2 flex-wrap items-center justify-between">
+        <div className="flex gap-2 flex-wrap">
+          {FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                filter === f.key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => { setShowForm(!showForm); if (showForm) resetForm() }}
+          className={`px-4 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+            showForm
+              ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          {showForm ? 'キャンセル' : '+ 手動追加'}
+        </button>
       </div>
+
+      {/* Manual Add Form */}
+      {showForm && (
+        <form onSubmit={handleSubmit} className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
+          <h3 className="text-sm font-bold text-blue-900">売掛金を手動追加</h3>
+
+          {formError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{formError}</div>
+          )}
+
+          {/* 顧客選択 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">顧客 <span className="text-red-500">*</span></label>
+            {selectedContact ? (
+              <div className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-blue-200">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{selectedContact.company || selectedContact.name}</p>
+                  {selectedContact.company && <p className="text-xs text-gray-500">{selectedContact.name}</p>}
+                </div>
+                <button type="button" onClick={() => { setSelectedContact(null); setContactSearch('') }}
+                  className="text-xs text-red-500 hover:underline">変更</button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={contactSearch}
+                  onChange={e => { setContactSearch(e.target.value); setShowContactDropdown(true) }}
+                  onFocus={() => setShowContactDropdown(true)}
+                  placeholder="会社名・氏名で検索..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                />
+                {showContactDropdown && filteredContacts.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filteredContacts.map(c => (
+                      <button key={c.id} type="button"
+                        onClick={() => { setSelectedContact(c); setShowContactDropdown(false); setContactSearch('') }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
+                        <span className="font-medium">{c.company || c.name}</span>
+                        {c.company && <span className="text-gray-500 ml-2 text-xs">{c.name}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 件名・金額 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">件名 <span className="text-red-500">*</span></label>
+              <input type="text" value={serviceName} onChange={e => setServiceName(e.target.value)}
+                placeholder="例: IT内製化サポート 4月分"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">金額（税込） <span className="text-red-500">*</span></label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">¥</span>
+                <input type="number" value={amountStr} onChange={e => setAmountStr(e.target.value)}
+                  placeholder="165000"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+            </div>
+          </div>
+
+          {/* 請求日・支払期日 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">請求日</label>
+              <input type="date" value={invoicedAt} onChange={e => handleInvoicedAtChange(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">支払期日（デフォ翌月末）</label>
+              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+            </div>
+          </div>
+
+          {/* 入金額（既に入金済みなら）・備考 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">入金済み額（任意）</label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">¥</span>
+                <input type="number" value={paidAmountStr} onChange={e => setPaidAmountStr(e.target.value)}
+                  placeholder="0"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+              <p className="text-[10px] text-gray-400 mt-0.5">満額入力で自動的に「入金済み」に</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">備考</label>
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="内部メモ"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => { setShowForm(false); resetForm() }}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+              キャンセル
+            </button>
+            <button type="submit" disabled={saving}
+              className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {saving ? '登録中...' : '登録する'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* List */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
