@@ -95,10 +95,11 @@ export async function POST(request: Request) {
     const drive = google.drive({ version: 'v3', auth: oauth2Client })
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-    // Get file info
+    // Get file info (supportsAllDrives: 共有ドライブ対応)
     const fileInfo = await drive.files.get({
       fileId: spreadsheetId,
       fields: 'name',
+      supportsAllDrives: true,
     })
     const fileName = fileInfo.data.name || 'document'
 

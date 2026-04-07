@@ -49,11 +49,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const drive = google.drive({ version: 'v3', auth: oauth2Client })
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-    // Get file name
-    const fileInfo = await drive.files.get({ fileId: record.spreadsheetId, fields: 'name' })
+    // Get file name (supportsAllDrives: 共有ドライブ対応)
+    const fileInfo = await drive.files.get({
+      fileId: record.spreadsheetId,
+      fields: 'name',
+      supportsAllDrives: true,
+    })
     const fileName = fileInfo.data.name || 'invoice'
 
-    // Export as PDF
+    // Export as PDF (drive.files.exportはsupportsAllDrives不要だがファイルアクセス権限が必要)
     const pdfResponse = await drive.files.export(
       { fileId: record.spreadsheetId, mimeType: 'application/pdf' },
       { responseType: 'arraybuffer' }
