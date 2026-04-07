@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { createInvoice } from '@/lib/invoice'
+import { createReceivableWithRevenue } from '@/lib/accounts-receivable'
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -79,7 +80,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     })
 
-    return NextResponse.json({ success: true, billingRecord: updated, invoice: result })
+    // 売掛金 + 売上を自動計上（発生主義）
+    const invoicedAt = new Date(issueDate)
+    const ar = await createReceivableWithRevenue({
+      contactId: contact.id,
+      billingRecordId: id,
+      source: 'SUBSCRIPTION',
+      serviceName: sub.serviceName,
+      invoiceSubject: sub.invoiceSubject,
+      spreadsheetId: result.spreadsheetId,
+      spreadsheetUrl: result.spreadsheetUrl,
+      amount: record.amount, // サブスクは税込扱い（既存仕様）
+      invoicedAt,
+    })
+
+    return NextResponse.json({ success: true, billingRecord: updated, invoice: result, accountsReceivable: ar.accountsReceivable })
   } catch (error: unknown) {
     console.error('Invoice generation error:', error)
     const msg = error instanceof Error ? error.message : 'Unknown error'
