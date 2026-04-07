@@ -52,6 +52,8 @@ model Contact {
   TaskLink            TaskLink[]
   Subscription        Subscription[]
   Contract            Contract[]
+  AccountsReceivable  AccountsReceivable[]
+  Revenue             Revenue[]
 }
 
 model Exchange {
@@ -164,23 +166,107 @@ model Subscription {
 }
 
 model BillingRecord {
-  id              String        @id @default(cuid())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  subscriptionId  String
-  billingMonth    String        // "2026-04" format
-  amount          Int?
-  amountConfirmed Boolean       @default(false)
-  status          String        @default("PENDING") // PENDING / GENERATED / SENT / DOWNLOADED
-  spreadsheetId   String?
-  spreadsheetUrl  String?
-  generatedAt     DateTime?
-  sentAt          DateTime?
-  sentMethod      String?       // "EMAIL" / "PDF_DOWNLOAD"
-  errorMessage    String?
-  Subscription    Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(cuid())
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  subscriptionId     String
+  billingMonth       String              // "2026-04" format
+  amount             Int?
+  amountConfirmed    Boolean             @default(false)
+  status             String              @default("PENDING") // PENDING / GENERATED / SENT / DOWNLOADED
+  spreadsheetId      String?
+  spreadsheetUrl     String?
+  generatedAt        DateTime?
+  sentAt             DateTime?
+  sentMethod         String?             // "EMAIL" / "PDF_DOWNLOAD"
+  errorMessage       String?
+  Subscription       Subscription        @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  AccountsReceivable AccountsReceivable?
 
   @@unique([subscriptionId, billingMonth])
+}
+
+// 売掛金（Accounts Receivable）
+model AccountsReceivable {
+  id              String              @id @default(cuid())
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  contactId       String
+  billingRecordId String?             @unique // サブスク由来（任意）
+  source          String              @default("MANUAL") // SUBSCRIPTION / MANUAL
+  serviceName     String
+  invoiceSubject  String?
+  spreadsheetId   String?             // 請求書スプレッドシート
+  spreadsheetUrl  String?
+  subtotal        Int                 // 税抜
+  taxAmount       Int                 // 消費税
+  amount          Int                 // 税込合計（＝請求金額）
+  paidAmount      Int                 @default(0)
+  invoicedAt      DateTime            // 請求日（売上計上日）
+  dueDate         DateTime            // 支払期日（デフォ：翌月末、編集可）
+  paidAt          DateTime?
+  status          String              @default("OPEN") // OPEN / PARTIAL / PAID / OVERDUE / WRITTEN_OFF
+  notes           String?
+  Contact         Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  BillingRecord   BillingRecord?      @relation(fields: [billingRecordId], references: [id], onDelete: SetNull)
+  Revenue         Revenue?
+  Allocations     PaymentAllocation[]
+
+  @@index([contactId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// 売上計上（発生主義：請求日=売上計上日）
+model Revenue {
+  id                   String             @id @default(cuid())
+  createdAt            DateTime           @default(now())
+  accountsReceivableId String             @unique
+  contactId            String
+  serviceName          String
+  subtotal             Int                // 税抜
+  taxAmount            Int
+  totalAmount          Int                // 税込
+  recognizedAt         DateTime           // 売上計上日（＝請求日）
+  fiscalMonth          String             // "2026-04" 形式
+  AccountsReceivable   AccountsReceivable @relation(fields: [accountsReceivableId], references: [id], onDelete: Cascade)
+  Contact              Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([fiscalMonth])
+  @@index([contactId])
+}
+
+// 入金明細（MF/楽天等からの取込）
+model PaymentTransaction {
+  id                  String              @id @default(cuid())
+  createdAt           DateTime            @default(now())
+  source              String              // "MF" / "RAKUTEN" / "MANUAL"
+  externalId          String?             @unique // 元データのID（重複取込防止）
+  transactionDate     DateTime
+  amount              Int
+  payerName           String              // 振込人名義
+  payerNameNormalized String              // 正規化済み（マッチング用）
+  payerType           String              @default("UNKNOWN") // COMPANY / PERSON / UNKNOWN
+  rawData             Json?
+  matchStatus         String              @default("UNMATCHED") // UNMATCHED / AUTO_MATCHED / MANUAL_MATCHED / IGNORED / NEEDS_REVIEW
+  reviewNote          String?
+  Allocations         PaymentAllocation[]
+
+  @@index([transactionDate])
+  @@index([matchStatus])
+}
+
+// 入金 ↔ 売掛 の割当（部分入金・按分対応）
+model PaymentAllocation {
+  id                   String             @id @default(cuid())
+  createdAt            DateTime           @default(now())
+  paymentTransactionId String
+  accountsReceivableId String
+  allocatedAmount      Int
+  PaymentTransaction   PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  AccountsReceivable   AccountsReceivable @relation(fields: [accountsReceivableId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentTransactionId, accountsReceivableId])
 }
 
 model Contract {

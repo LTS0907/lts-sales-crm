@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { createInvoice, InvoiceItem } from '@/lib/invoice'
+import { createReceivableWithRevenue } from '@/lib/accounts-receivable'
 
 interface CreateInvoiceRequest {
   contactId: string
@@ -53,7 +54,27 @@ export async function POST(request: Request) {
       })
     }
 
-    return NextResponse.json({ success: true, ...result })
+    // 請求書の場合のみ、売掛金 + 売上を自動計上（発生主義）
+    let accountsReceivable = null
+    if (type === 'invoice' && result.total > 0) {
+      const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0)
+      const taxAmount = Math.floor(subtotal * 0.1)
+      const ar = await createReceivableWithRevenue({
+        contactId: contact.id,
+        source: 'MANUAL',
+        serviceName: subject,
+        invoiceSubject: subject,
+        spreadsheetId: result.spreadsheetId,
+        spreadsheetUrl: result.spreadsheetUrl,
+        amount: result.total,
+        subtotal,
+        taxAmount,
+        invoicedAt: issueDate ? new Date(issueDate) : new Date(),
+      })
+      accountsReceivable = ar.accountsReceivable
+    }
+
+    return NextResponse.json({ success: true, ...result, accountsReceivable })
   } catch (error: unknown) {
     console.error('Invoice creation error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
