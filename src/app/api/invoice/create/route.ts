@@ -57,8 +57,13 @@ export async function POST(request: Request) {
     // 請求書の場合のみ、売掛金 + 売上を自動計上（発生主義）
     let accountsReceivable = null
     if (type === 'invoice' && result.total > 0) {
-      const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0)
-      const taxAmount = Math.floor(subtotal * 0.1)
+      // issueDate の検証：空文字 or 不正値は今日に fallback
+      let invoicedAt = new Date()
+      if (issueDate && issueDate.trim()) {
+        const parsed = new Date(issueDate)
+        if (!isNaN(parsed.getTime())) invoicedAt = parsed
+      }
+
       const ar = await createReceivableWithRevenue({
         contactId: contact.id,
         source: 'MANUAL',
@@ -67,9 +72,9 @@ export async function POST(request: Request) {
         spreadsheetId: result.spreadsheetId,
         spreadsheetUrl: result.spreadsheetUrl,
         amount: result.total,
-        subtotal,
-        taxAmount,
-        invoicedAt: issueDate ? new Date(issueDate) : new Date(),
+        subtotal: result.subtotal,
+        taxAmount: result.tax,
+        invoicedAt,
       })
       accountsReceivable = ar.accountsReceivable
     }

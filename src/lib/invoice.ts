@@ -32,6 +32,8 @@ export interface CreateInvoiceResult {
   spreadsheetId: string
   spreadsheetUrl: string
   documentTitle: string
+  subtotal: number
+  tax: number
   total: number
   movedToDrive: boolean
   driveFolderId: string | null
@@ -72,10 +74,15 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
   const formattedDate = `${issueDateObj.getFullYear()}年${issueDateObj.getMonth() + 1}月${issueDateObj.getDate()}日`
 
   let total: number
+  let subtotal: number
+  let tax: number
   const updates: { range: string; values: (string | number)[][] }[] = []
 
   if (type === 'receipt') {
     total = items[0]?.unitPrice || 0
+    // 領収書は税込総額のみ。税抜は逆算（税込/1.1）
+    subtotal = Math.floor(total / 1.1)
+    tax = total - subtotal
     updates.push(
       { range: 'A5', values: [[`${companyName}様`]] },
       { range: 'F4', values: [[`発行年月日：${formattedDate}`]] },
@@ -84,8 +91,8 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
     )
     if (notes) updates.push({ range: 'A37', values: [[notes]] })
   } else {
-    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
-    const tax = Math.floor(subtotal * 0.1)
+    subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
+    tax = Math.floor(subtotal * 0.1)
     total = subtotal + tax
 
     updates.push(
@@ -169,6 +176,8 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
     spreadsheetId: newSpreadsheetId,
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${newSpreadsheetId}/edit`,
     documentTitle,
+    subtotal,
+    tax,
     total,
     movedToDrive,
     driveFolderId: driveFolderId || null,

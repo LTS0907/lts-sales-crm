@@ -38,23 +38,16 @@ export interface CreateReceivableInput {
 
 /**
  * 売掛金と売上を同時に作成する（発生主義）
- * 既に billingRecordId が紐づいているARが存在する場合はスキップ
+ *
+ * - prisma.$transaction でアトミック化（AR作成後のRevenue失敗で孤立を防止）
+ * - billingRecordId 指定時は upsert で Idempotency 保証（同時リクエスト耐性）
+ * - 単発（billingRecordId なし）は常に新規作成
  */
 export async function createReceivableWithRevenue(
   input: CreateReceivableInput,
-  tx?: Prisma.TransactionClient
+  externalTx?: Prisma.TransactionClient
 ) {
-  const db = tx || prisma
-
-  // Idempotency: billingRecordIdが指定されていて既存ARがあればスキップ
-  if (input.billingRecordId) {
-    const existing = await db.accountsReceivable.findUnique({
-      where: { billingRecordId: input.billingRecordId },
-    })
-    if (existing) return { accountsReceivable: existing, revenue: null, skipped: true as const }
-  }
-
-  // 金額計算
+  // 金額計算（呼び出し側で先に計算しておく方が安全）
   const amount = input.amount
   const subtotal = input.subtotal ?? Math.floor(amount / 1.1)
   const taxAmount = input.taxAmount ?? amount - subtotal
@@ -62,52 +55,88 @@ export async function createReceivableWithRevenue(
   const invoicedAt = input.invoicedAt
   const dueDate = input.dueDate ?? calcDefaultDueDate(invoicedAt)
   const fiscalMonth = toFiscalMonth(invoicedAt)
+  const source = input.source ?? (input.billingRecordId ? 'SUBSCRIPTION' : 'MANUAL')
 
-  const ar = await db.accountsReceivable.create({
-    data: {
-      contactId: input.contactId,
-      billingRecordId: input.billingRecordId ?? null,
-      source: input.source ?? (input.billingRecordId ? 'SUBSCRIPTION' : 'MANUAL'),
-      serviceName: input.serviceName,
-      invoiceSubject: input.invoiceSubject ?? null,
-      spreadsheetId: input.spreadsheetId ?? null,
-      spreadsheetUrl: input.spreadsheetUrl ?? null,
-      subtotal,
-      taxAmount,
-      amount,
-      invoicedAt,
-      dueDate,
-      status: 'OPEN',
-      notes: input.notes ?? null,
-    },
-  })
+  const arData = {
+    contactId: input.contactId,
+    billingRecordId: input.billingRecordId ?? null,
+    source,
+    serviceName: input.serviceName,
+    invoiceSubject: input.invoiceSubject ?? null,
+    spreadsheetId: input.spreadsheetId ?? null,
+    spreadsheetUrl: input.spreadsheetUrl ?? null,
+    subtotal,
+    taxAmount,
+    amount,
+    invoicedAt,
+    dueDate,
+    status: 'OPEN' as const,
+    notes: input.notes ?? null,
+  }
 
-  // 発生主義：請求日 = 売上計上日
-  const revenue = await db.revenue.create({
-    data: {
-      accountsReceivableId: ar.id,
-      contactId: input.contactId,
-      serviceName: input.serviceName,
-      subtotal,
-      taxAmount,
-      totalAmount: amount,
-      recognizedAt: invoicedAt,
-      fiscalMonth,
-    },
-  })
+  const revenueData = {
+    contactId: input.contactId,
+    serviceName: input.serviceName,
+    subtotal,
+    taxAmount,
+    totalAmount: amount,
+    recognizedAt: invoicedAt,
+    fiscalMonth,
+  }
 
-  return { accountsReceivable: ar, revenue, skipped: false as const }
+  // トランザクション本体
+  const work = async (tx: Prisma.TransactionClient) => {
+    let ar
+    let skipped = false
+
+    if (input.billingRecordId) {
+      // upsert で Idempotency を確保（同時実行耐性）
+      const existing = await tx.accountsReceivable.findUnique({
+        where: { billingRecordId: input.billingRecordId },
+        include: { Revenue: true },
+      })
+      if (existing) {
+        return { accountsReceivable: existing, revenue: existing.Revenue, skipped: true as const }
+      }
+      ar = await tx.accountsReceivable.create({ data: arData })
+    } else {
+      ar = await tx.accountsReceivable.create({ data: arData })
+    }
+
+    const revenue = await tx.revenue.create({
+      data: { ...revenueData, accountsReceivableId: ar.id },
+    })
+
+    return { accountsReceivable: ar, revenue, skipped }
+  }
+
+  // 外部トランザクションが渡されていればそれを使い、なければ自分で開始
+  if (externalTx) {
+    return work(externalTx)
+  }
+  return prisma.$transaction(work)
 }
 
 /**
- * 期日超過判定を行いstatusを更新（OPENのみ対象）
+ * paidAmount に応じて status を判定する
+ */
+export function deriveStatusFromPayment(amount: number, paidAmount: number, currentStatus: string): string {
+  if (paidAmount >= amount) return 'PAID'
+  if (paidAmount > 0) return 'PARTIAL'
+  // 未入金時は OPEN/OVERDUE/WRITTEN_OFF を維持
+  if (['OVERDUE', 'WRITTEN_OFF'].includes(currentStatus)) return currentStatus
+  return 'OPEN'
+}
+
+/**
+ * 期日超過判定を行いstatusを更新（OPEN/PARTIAL を対象）
  * cronやページロード時に呼ぶ
  */
 export async function refreshOverdueStatus() {
   const now = new Date()
   const result = await prisma.accountsReceivable.updateMany({
     where: {
-      status: 'OPEN',
+      status: { in: ['OPEN', 'PARTIAL'] },
       dueDate: { lt: now },
     },
     data: { status: 'OVERDUE' },

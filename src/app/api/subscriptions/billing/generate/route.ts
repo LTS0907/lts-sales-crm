@@ -68,27 +68,32 @@ export async function POST(request: Request) {
           })
         }
 
-        await prisma.billingRecord.update({
-          where: { id: record.id },
-          data: {
-            status: 'GENERATED',
-            spreadsheetId: result.spreadsheetId,
-            spreadsheetUrl: result.spreadsheetUrl,
-            generatedAt: new Date(),
-          },
-        })
+        // BillingRecord更新 + AR/Revenue 自動計上をアトミックに
+        await prisma.$transaction(async (tx) => {
+          await tx.billingRecord.update({
+            where: { id: record.id },
+            data: {
+              status: 'GENERATED',
+              spreadsheetId: result.spreadsheetId,
+              spreadsheetUrl: result.spreadsheetUrl,
+              generatedAt: new Date(),
+            },
+          })
 
-        // 売掛金 + 売上を自動計上（発生主義）
-        await createReceivableWithRevenue({
-          contactId: contact.id,
-          billingRecordId: record.id,
-          source: 'SUBSCRIPTION',
-          serviceName: sub.serviceName,
-          invoiceSubject: sub.invoiceSubject,
-          spreadsheetId: result.spreadsheetId,
-          spreadsheetUrl: result.spreadsheetUrl,
-          amount: record.amount!,
-          invoicedAt: new Date(issueDate),
+          await createReceivableWithRevenue(
+            {
+              contactId: contact.id,
+              billingRecordId: record.id,
+              source: 'SUBSCRIPTION',
+              serviceName: sub.serviceName,
+              invoiceSubject: sub.invoiceSubject,
+              spreadsheetId: result.spreadsheetId,
+              spreadsheetUrl: result.spreadsheetUrl,
+              amount: record.amount!,
+              invoicedAt: new Date(issueDate),
+            },
+            tx
+          )
         })
 
         results.push({ id: record.id, success: true })

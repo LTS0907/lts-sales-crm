@@ -69,29 +69,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
     }
 
-    // Update billing record
-    const updated = await prisma.billingRecord.update({
-      where: { id },
-      data: {
-        status: 'GENERATED',
-        spreadsheetId: result.spreadsheetId,
-        spreadsheetUrl: result.spreadsheetUrl,
-        generatedAt: new Date(),
-      },
-    })
-
-    // 売掛金 + 売上を自動計上（発生主義）
+    // BillingRecord 更新 + AR/Revenue 自動計上（発生主義）をアトミックに
     const invoicedAt = new Date(issueDate)
-    const ar = await createReceivableWithRevenue({
-      contactId: contact.id,
-      billingRecordId: id,
-      source: 'SUBSCRIPTION',
-      serviceName: sub.serviceName,
-      invoiceSubject: sub.invoiceSubject,
-      spreadsheetId: result.spreadsheetId,
-      spreadsheetUrl: result.spreadsheetUrl,
-      amount: record.amount, // サブスクは税込扱い（既存仕様）
-      invoicedAt,
+    const { updated, ar } = await prisma.$transaction(async (tx) => {
+      const updated = await tx.billingRecord.update({
+        where: { id },
+        data: {
+          status: 'GENERATED',
+          spreadsheetId: result.spreadsheetId,
+          spreadsheetUrl: result.spreadsheetUrl,
+          generatedAt: new Date(),
+        },
+      })
+
+      const ar = await createReceivableWithRevenue(
+        {
+          contactId: contact.id,
+          billingRecordId: id,
+          source: 'SUBSCRIPTION',
+          serviceName: sub.serviceName,
+          invoiceSubject: sub.invoiceSubject,
+          spreadsheetId: result.spreadsheetId,
+          spreadsheetUrl: result.spreadsheetUrl,
+          amount: record.amount!, // サブスクは税込扱い（既存仕様、上で null チェック済み）
+          invoicedAt,
+        },
+        tx
+      )
+
+      return { updated, ar }
     })
 
     return NextResponse.json({ success: true, billingRecord: updated, invoice: result, accountsReceivable: ar.accountsReceivable })
