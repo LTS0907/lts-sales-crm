@@ -291,3 +291,17 @@ model Contract {
   certDriveFileId   String?
   Contact           Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 }
+
+model BackupLog {
+  id          String   @id @default(cuid())
+  executedAt  DateTime @default(now())
+  kind        String   // BACKUP / DRILL / CLEANUP
+  status      String   // SUCCESS / PARTIAL / FAILED
+  sheetsOk    Boolean  @default(false)
+  githubOk    Boolean  @default(false)
+  driveDumpUrl String?
+  tableCounts Json?
+  errors      String[] @default([])
+  durationMs  Int      @default(0)
+  notes       String?
+}
