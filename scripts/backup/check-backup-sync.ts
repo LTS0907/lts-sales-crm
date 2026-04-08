@@ -33,7 +33,7 @@ function extractPrismaModels(): string[] {
 function extractBackupTables(): string[] {
   const content = readFileSync(BACKUP, 'utf8')
   // return { X: ..., Y: ..., } のオブジェクト部分
-  const match = content.match(/return\s*\{([^}]+)\}/s)
+  const match = content.match(/return\s*\{([\s\S]+?)\}/)
   if (!match) return []
   const keys: string[] = []
   const keyRe = /^\s*(\w+):/gm
@@ -47,7 +47,7 @@ function extractBackupTables(): string[] {
 // decrypt-backup.ts の order 配列からテーブル名を抽出
 function extractDecryptOrder(): string[] {
   const content = readFileSync(DECRYPT, 'utf8')
-  const match = content.match(/const\s+order\s*=\s*\[([^\]]+)\]/s)
+  const match = content.match(/const\s+order\s*=\s*\[([\s\S]+?)\]/)
   if (!match) return []
   const names: string[] = []
   const nameRe = /['"](\w+)['"]/g

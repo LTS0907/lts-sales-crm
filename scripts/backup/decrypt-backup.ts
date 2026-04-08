@@ -89,7 +89,7 @@ async function main() {
       'Meeting', 'MeetingParticipant', 'ServicePhase', 'Contract',
       'Subscription', 'BillingRecord', 'AccountsReceivable', 'Revenue',
       'PaymentTransaction', 'PaymentAllocation',
-      'FollowUpLog', 'TaskLink',
+      'FollowUpLog', 'TaskLink', 'BackupLog',
     ]
     for (const name of order) {
       const rows = data[name] || []
