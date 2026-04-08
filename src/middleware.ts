@@ -29,6 +29,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files
      */
-    '/((?!auth|api/auth|api/subscriptions/cron|sign|api/contracts/[^/]+/signing-data|api/contracts/[^/]+/sign|_next/static|_next/image|favicon.ico|pdf\\.worker\\.min\\.mjs|fonts/.*|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
+    '/((?!auth|api/auth|api/subscriptions/cron|api/backup|sign|api/contracts/[^/]+/signing-data|api/contracts/[^/]+/sign|_next/static|_next/image|favicon.ico|pdf\\.worker\\.min\\.mjs|fonts/.*|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
   ],
 }
