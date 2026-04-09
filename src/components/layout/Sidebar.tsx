@@ -23,6 +23,7 @@ const nav = [
     { href: '/subscriptions', label: 'サブスク管理', icon: '🔄' },
     { href: '/subscriptions/billing', label: '月次請求', icon: '📄' },
     { href: '/accounts-receivable', label: '売掛金管理', icon: '💰' },
+    { href: '/payments', label: '入金・消込', icon: '🏦' },
   ]},
 ]
 
