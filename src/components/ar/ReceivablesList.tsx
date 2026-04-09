@@ -159,6 +159,9 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
   }
   const [editingDueId, setEditingDueId] = useState<string | null>(null)
   const [editingDueValue, setEditingDueValue] = useState('')
+  const [editingAmountId, setEditingAmountId] = useState<string | null>(null)
+  const [editingAmountValue, setEditingAmountValue] = useState('')
+  const [editError, setEditError] = useState('')
 
   const filtered = useMemo(() => {
     if (filter === 'ALL') return items
@@ -219,6 +222,40 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
   function startEditingDue(ar: AR) {
     setEditingDueId(ar.id)
     setEditingDueValue(ar.dueDate.slice(0, 10))
+  }
+
+  function startEditingAmount(ar: AR) {
+    setEditingAmountId(ar.id)
+    setEditingAmountValue(String(ar.amount))
+    setEditError('')
+  }
+
+  async function handleAmountSave(arId: string) {
+    const amount = parseInt(editingAmountValue)
+    if (!amount || amount <= 0) {
+      setEditError('金額を正しく入力してください')
+      return
+    }
+    setEditError('')
+    const res = await fetch(`/api/accounts-receivable/${arId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setItems(items.map(i => i.id === arId ? {
+        ...i,
+        amount: updated.amount,
+        status: updated.status,
+        paidAmount: updated.paidAmount,
+      } : i))
+      setEditingAmountId(null)
+      router.refresh()
+    } else {
+      const err = await res.json().catch(() => ({ error: '更新に失敗しました' }))
+      setEditError(err.error || '更新に失敗しました')
+    }
   }
 
   return (
@@ -421,7 +458,36 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
                         <span className="text-gray-800">{ar.invoiceSubject || ar.serviceName}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">¥{ar.amount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-right font-medium">
+                      {editingAmountId === ar.id ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">¥</span>
+                            <input
+                              type="number"
+                              value={editingAmountValue}
+                              onChange={e => setEditingAmountValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleAmountSave(ar.id)
+                                if (e.key === 'Escape') { setEditingAmountId(null); setEditError('') }
+                              }}
+                              autoFocus
+                              className="border border-gray-300 rounded px-2 py-0.5 text-xs w-28 text-right"
+                            />
+                            <button onClick={() => handleAmountSave(ar.id)}
+                              className="text-xs text-blue-600 hover:underline">保存</button>
+                            <button onClick={() => { setEditingAmountId(null); setEditError('') }}
+                              className="text-xs text-gray-400 hover:underline">取消</button>
+                          </div>
+                          {editError && <p className="text-[10px] text-red-600">{editError}</p>}
+                        </div>
+                      ) : (
+                        <button onClick={() => startEditingAmount(ar)}
+                          className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer">
+                          ¥{ar.amount.toLocaleString()}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-right">
                       {ar.paidAmount > 0 ? (
                         <div>

@@ -8,6 +8,7 @@ interface PatchBody {
   notes?: string | null
   paidAmount?: number
   paidAt?: string | null
+  amount?: number
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -35,6 +36,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (body.notes !== undefined) data.notes = body.notes
 
+    // amount の更新（税込合計を直接書き換え、subtotal/taxAmount を 10% 税で再計算）
+    let nextAmount = existing.amount
+    let nextSubtotal = existing.subtotal
+    let nextTaxAmount = existing.taxAmount
+    if (body.amount !== undefined) {
+      if (typeof body.amount !== 'number' || !Number.isFinite(body.amount) || body.amount <= 0) {
+        return NextResponse.json({ error: 'invalid amount' }, { status: 400 })
+      }
+      nextAmount = Math.round(body.amount)
+      nextSubtotal = Math.floor(nextAmount / 1.1)
+      nextTaxAmount = nextAmount - nextSubtotal
+      data.amount = nextAmount
+      data.subtotal = nextSubtotal
+      data.taxAmount = nextTaxAmount
+    }
+
     // paidAmount の更新
     let nextPaidAmount = existing.paidAmount
     if (body.paidAmount !== undefined) {
@@ -45,9 +62,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       data.paidAmount = nextPaidAmount
     }
 
+    // 新amount < 既存paidAmount の場合はエラー（矛盾を防ぐ）
+    if (nextAmount < nextPaidAmount) {
+      return NextResponse.json({
+        error: `金額(${nextAmount.toLocaleString()}円)が入金済額(${nextPaidAmount.toLocaleString()}円)を下回ります。入金済額を先に調整してください。`
+      }, { status: 400 })
+    }
+
     // status の決定
     // 1. 明示的に指定があればそれを使う
-    // 2. paidAmount が変わった場合は自動判定
+    // 2. paidAmount か amount が変わった場合は自動判定
     let nextStatus = existing.status
     if (body.status !== undefined) {
       const allowedStatus = ['OPEN', 'PARTIAL', 'PAID', 'OVERDUE', 'WRITTEN_OFF']
@@ -57,13 +81,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       nextStatus = body.status
       // status=PAID 指定時、paidAmount が指定されてなければ全額入金扱い
       if (body.status === 'PAID' && body.paidAmount === undefined) {
-        nextPaidAmount = existing.amount
+        nextPaidAmount = nextAmount
         data.paidAmount = nextPaidAmount
       }
       data.status = nextStatus
-    } else if (body.paidAmount !== undefined) {
-      // paidAmount だけ更新時、status を自動判定
-      nextStatus = deriveStatusFromPayment(existing.amount, nextPaidAmount, existing.status)
+    } else if (body.paidAmount !== undefined || body.amount !== undefined) {
+      // paidAmount または amount 更新時は status を自動判定
+      nextStatus = deriveStatusFromPayment(nextAmount, nextPaidAmount, existing.status)
       data.status = nextStatus
     }
 
@@ -77,14 +101,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     } else if (nextStatus === 'PAID' && !existing.paidAt) {
       // PAID へ遷移したら自動で paidAt を今に設定
       data.paidAt = new Date()
-    } else if (nextStatus !== 'PAID' && nextStatus !== 'PARTIAL' && existing.paidAt) {
-      // 入金状態から戻ったら paidAt をクリア（ありえないが念のため）
-      // 何もしない（履歴として残す）
     }
 
-    const updated = await prisma.accountsReceivable.update({
-      where: { id },
-      data,
+    // amount 更新時は Revenue（売上）も連動更新する必要がある
+    // → トランザクションでまとめて処理
+    const updated = await prisma.$transaction(async (tx) => {
+      const ar = await tx.accountsReceivable.update({ where: { id }, data })
+      if (body.amount !== undefined) {
+        await tx.revenue.updateMany({
+          where: { accountsReceivableId: id },
+          data: {
+            subtotal: nextSubtotal,
+            taxAmount: nextTaxAmount,
+            totalAmount: nextAmount,
+          },
+        })
+      }
+      return ar
     })
 
     return NextResponse.json(updated)
