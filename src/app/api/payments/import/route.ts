@@ -2,10 +2,11 @@
  * POST /api/payments/import
  *
  * マネーフォワードクラウド会計 or 楽天銀行の CSV をアップロードして
- * 入金取引を PaymentTransaction として取り込む。
+ * 入出金取引を PaymentTransaction として取り込む。
  *
- * 取込時に自動マッチングを試み、金額一致 + 名前スコア >= 0.8 かつ
- * 候補1件なら自動で PaymentAllocation を作成し AR を消込する。
+ * - 入金(IN): AR 自動マッチングを試みる
+ * - 出金(OUT): matchStatus=IGNORED で保存のみ（AR対象外）
+ * - 残高があれば balance に保存
  *
  * リクエスト: multipart/form-data with `file` field (CSV)
  * 認証: NextAuth セッション
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // 未消込 + 一部入金の AR を取得（マッチング候補）
+    // 未消込の AR を取得（マッチング候補）
     const openArs = await prisma.accountsReceivable.findMany({
       where: { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } },
       include: {
@@ -56,15 +57,39 @@ export async function POST(request: Request) {
     let autoMatched = 0
     let needsReview = 0
     let unmatched = 0
-    const resultDetails: unknown[] = []
+    let outCreated = 0
 
     for (const tx of parsed.transactions) {
-      // externalId は 日付+金額+名前 のハッシュ的ID（重複防止）
-      const externalId = `MF_${tx.transactionDate.toISOString().slice(0,10)}_${tx.amount}_${tx.payerName.slice(0,30)}`
+      const externalId = `MF_${tx.transactionDate.toISOString().slice(0,10)}_${tx.direction}_${tx.amount}_${tx.payerName.slice(0,30)}`
       const existing = await prisma.paymentTransaction.findUnique({ where: { externalId } })
       if (existing) { skippedDup++; continue }
 
       const normalized = normalizePayerName(tx.payerName)
+
+      // 出金はマッチングしない
+      if (tx.direction === 'OUT') {
+        await prisma.paymentTransaction.create({
+          data: {
+            source: 'MF',
+            externalId,
+            transactionDate: tx.transactionDate,
+            direction: 'OUT',
+            amount: tx.amount,
+            balance: tx.balance,
+            description: tx.description,
+            payerName: tx.payerName,
+            payerNameNormalized: normalized,
+            payerType: 'UNKNOWN',
+            rawData: tx.rawRow,
+            matchStatus: 'IGNORED',
+          },
+        })
+        outCreated++
+        created++
+        continue
+      }
+
+      // 入金 → マッチング試行
       const match = matchPaymentToAR(tx.amount, normalized, openArs)
 
       let matchStatus: 'UNMATCHED' | 'NEEDS_REVIEW' | 'AUTO_MATCHED' = 'UNMATCHED'
@@ -78,14 +103,16 @@ export async function POST(request: Request) {
         unmatched++
       }
 
-      // トランザクションで PaymentTransaction + Allocation + AR 更新
-      const result = await prisma.$transaction(async (tx2) => {
+      await prisma.$transaction(async (tx2) => {
         const payment = await tx2.paymentTransaction.create({
           data: {
             source: 'MF',
             externalId,
             transactionDate: tx.transactionDate,
+            direction: 'IN',
             amount: tx.amount,
+            balance: tx.balance,
+            description: tx.description,
             payerName: tx.payerName,
             payerNameNormalized: normalized,
             payerType: 'UNKNOWN',
@@ -113,24 +140,12 @@ export async function POST(request: Request) {
               paidAt: newStatus === 'PAID' ? new Date() : undefined,
             },
           })
-          // local state を更新してバッチ内での二重マッチを防ぐ
           ar.paidAmount = newPaid
           ar.status = newStatus
         }
-
-        return payment
       })
 
       created++
-      resultDetails.push({
-        id: result.id,
-        date: tx.transactionDate.toISOString().slice(0, 10),
-        amount: tx.amount,
-        payerName: tx.payerName,
-        matchStatus,
-        matchedArId: match.autoMatched ? match.bestMatch?.ar.id : undefined,
-        candidateCount: match.candidates.length,
-      })
     }
 
     return NextResponse.json({
@@ -138,12 +153,13 @@ export async function POST(request: Request) {
       format: parsed.format,
       total: parsed.transactions.length,
       created,
+      outCreated,
+      inCreated: created - outCreated,
       skippedDup,
       skippedNonDeposit: parsed.skipped,
       autoMatched,
       needsReview,
       unmatched,
-      details: resultDetails,
     })
   } catch (error: unknown) {
     console.error('Payment import error:', error)
