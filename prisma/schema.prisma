@@ -243,8 +243,11 @@ model PaymentTransaction {
   source              String              // "MF" / "RAKUTEN" / "MANUAL"
   externalId          String?             @unique // 元データのID（重複取込防止）
   transactionDate     DateTime
-  amount              Int
-  payerName           String              // 振込人名義
+  direction           String              @default("IN") // IN / OUT
+  amount              Int                                  // 常に正の値。direction で方向を示す
+  balance             Int?                                 // 取引後残高（CSVにあれば）
+  description         String?                              // 摘要全文
+  payerName           String              // 振込人名義（OUT時は振込先）
   payerNameNormalized String              // 正規化済み（マッチング用）
   payerType           String              @default("UNKNOWN") // COMPANY / PERSON / UNKNOWN
   rawData             Json?
@@ -254,6 +257,7 @@ model PaymentTransaction {
 
   @@index([transactionDate])
   @@index([matchStatus])
+  @@index([direction])
 }
 
 // 入金 ↔ 売掛 の割当（部分入金・按分対応）

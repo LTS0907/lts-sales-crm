@@ -35,7 +35,10 @@ interface Payment {
   id: string
   source: string
   transactionDate: string
+  direction: string
   amount: number
+  balance: number | null
+  description: string | null
   payerName: string
   payerNameNormalized: string
   matchStatus: string
@@ -48,11 +51,17 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   NEEDS_REVIEW:    { label: '要確認',      color: 'bg-yellow-100 text-yellow-700' },
   AUTO_MATCHED:    { label: '自動消込済',  color: 'bg-green-100 text-green-700' },
   MANUAL_MATCHED:  { label: '手動消込済',  color: 'bg-blue-100 text-blue-700' },
-  IGNORED:         { label: '無視',        color: 'bg-gray-100 text-gray-500' },
+  IGNORED:         { label: '対象外',      color: 'bg-gray-100 text-gray-500' },
 }
 
-const FILTERS = [
-  { key: 'PENDING', label: '要対応（未消込・要確認）' },
+const DIRECTION_FILTERS = [
+  { key: 'IN',  label: '入金のみ' },
+  { key: 'OUT', label: '出金のみ' },
+  { key: 'ALL', label: '全取引' },
+]
+
+const STATUS_FILTERS = [
+  { key: 'PENDING', label: '要対応' },
   { key: 'UNMATCHED', label: '未消込' },
   { key: 'NEEDS_REVIEW', label: '要確認' },
   { key: 'MATCHED', label: '消込済' },
@@ -63,16 +72,27 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+function fmtMonth(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function PaymentsClient({
   payments: initial,
   arsForMatching,
+  latestBalance,
+  latestBalanceDate,
 }: {
   payments: Payment[]
   arsForMatching: ARForMatching[]
+  latestBalance: number | null
+  latestBalanceDate: string | null
 }) {
   const router = useRouter()
-  const [payments, setPayments] = useState(initial)
-  const [filter, setFilter] = useState('PENDING')
+  const [payments] = useState(initial)
+  const [directionFilter, setDirectionFilter] = useState('IN')
+  const [statusFilter, setStatusFilter] = useState('PENDING')
+  const [monthFilter, setMonthFilter] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -81,18 +101,41 @@ export default function PaymentsClient({
   const [openPaymentId, setOpenPaymentId] = useState<string | null>(null)
   const [arSearch, setArSearch] = useState('')
 
-  const filtered = useMemo(() => {
-    if (filter === 'ALL') return payments
-    if (filter === 'PENDING') return payments.filter(p => p.matchStatus === 'UNMATCHED' || p.matchStatus === 'NEEDS_REVIEW')
-    if (filter === 'MATCHED') return payments.filter(p => p.matchStatus === 'AUTO_MATCHED' || p.matchStatus === 'MANUAL_MATCHED')
-    return payments.filter(p => p.matchStatus === filter)
-  }, [payments, filter])
+  // 月のリスト
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>()
+    payments.forEach(p => set.add(fmtMonth(p.transactionDate)))
+    return Array.from(set).sort().reverse()
+  }, [payments])
 
+  const filtered = useMemo(() => {
+    let list = payments
+    // 方向フィルタ
+    if (directionFilter === 'IN') list = list.filter(p => p.direction === 'IN')
+    else if (directionFilter === 'OUT') list = list.filter(p => p.direction === 'OUT')
+    // ステータスフィルタ（入金のみに適用）
+    if (directionFilter !== 'OUT') {
+      if (statusFilter === 'PENDING') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === 'UNMATCHED' || p.matchStatus === 'NEEDS_REVIEW')
+      else if (statusFilter === 'MATCHED') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === 'AUTO_MATCHED' || p.matchStatus === 'MANUAL_MATCHED')
+      else if (statusFilter !== 'ALL') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === statusFilter)
+    }
+    // 月フィルタ
+    if (monthFilter) list = list.filter(p => fmtMonth(p.transactionDate) === monthFilter)
+    return list
+  }, [payments, directionFilter, statusFilter, monthFilter])
+
+  // サマリ: 現在の filter 条件での集計
   const summary = useMemo(() => {
-    const unmatched = payments.filter(p => p.matchStatus === 'UNMATCHED')
-    const review = payments.filter(p => p.matchStatus === 'NEEDS_REVIEW')
-    const matched = payments.filter(p => p.matchStatus === 'AUTO_MATCHED' || p.matchStatus === 'MANUAL_MATCHED')
+    const inTx = filtered.filter(p => p.direction === 'IN')
+    const outTx = filtered.filter(p => p.direction === 'OUT')
+    const unmatched = inTx.filter(p => p.matchStatus === 'UNMATCHED')
+    const review = inTx.filter(p => p.matchStatus === 'NEEDS_REVIEW')
+    const matched = inTx.filter(p => p.matchStatus === 'AUTO_MATCHED' || p.matchStatus === 'MANUAL_MATCHED')
     return {
+      totalIn: inTx.reduce((s, p) => s + p.amount, 0),
+      totalInCount: inTx.length,
+      totalOut: outTx.reduce((s, p) => s + p.amount, 0),
+      totalOutCount: outTx.length,
       unmatchedAmount: unmatched.reduce((s, p) => s + p.amount, 0),
       unmatchedCount: unmatched.length,
       reviewAmount: review.reduce((s, p) => s + p.amount, 0),
@@ -100,7 +143,7 @@ export default function PaymentsClient({
       matchedAmount: matched.reduce((s, p) => s + p.amount, 0),
       matchedCount: matched.length,
     }
-  }, [payments])
+  }, [filtered])
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -115,7 +158,8 @@ export default function PaymentsClient({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'アップロード失敗')
       setUploadResult(
-        `取込完了: 総${data.total}件 → 新規${data.created} / 自動消込${data.autoMatched} / 要確認${data.needsReview} / 未消込${data.unmatched} / 重複スキップ${data.skippedDup}`
+        `取込完了: 総${data.total}件 (入金${data.inCreated}/出金${data.outCreated}) → ` +
+        `新規${data.created} / 自動消込${data.autoMatched} / 要確認${data.needsReview} / 未消込${data.unmatched} / 重複スキップ${data.skippedDup}`
       )
       router.refresh()
     } catch (err: unknown) {
@@ -153,7 +197,6 @@ export default function PaymentsClient({
     const openPayment = payments.find(p => p.id === openPaymentId)
     let list = arsForMatching
     if (openPayment) {
-      // 金額完全一致を先頭に
       list = [...arsForMatching].sort((a, b) => {
         const ra = a.amount - a.paidAmount
         const rb = b.amount - b.paidAmount
@@ -174,40 +217,98 @@ export default function PaymentsClient({
       .slice(0, 30)
   }, [arsForMatching, arSearch, openPaymentId, payments])
 
+  const netChange = summary.totalIn - summary.totalOut
+
   return (
     <div className="space-y-5">
-      {/* Summary */}
+      {/* 全体サマリー */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+          <p className="text-xs text-blue-700 font-medium">🏦 最新残高</p>
+          <p className="text-2xl font-bold text-blue-900 mt-1">
+            {latestBalance !== null ? `¥${latestBalance.toLocaleString()}` : '—'}
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            {latestBalanceDate ? fmtDate(latestBalanceDate) + ' 時点' : 'CSVに残高列が必要'}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-xs text-gray-500">⬆ 入金合計（絞込後）</p>
+          <p className="text-2xl font-bold text-green-600 mt-1">¥{summary.totalIn.toLocaleString()}</p>
+          <p className="text-xs text-gray-400 mt-1">{summary.totalInCount}件</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-xs text-gray-500">⬇ 出金合計（絞込後）</p>
+          <p className="text-2xl font-bold text-red-600 mt-1">¥{summary.totalOut.toLocaleString()}</p>
+          <p className="text-xs text-gray-400 mt-1">{summary.totalOutCount}件</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-xs text-gray-500">⚖ 純増減（絞込後）</p>
+          <p className={`text-2xl font-bold mt-1 ${netChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {netChange >= 0 ? '+' : ''}¥{netChange.toLocaleString()}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">入金 − 出金</p>
+        </div>
+      </div>
+
+      {/* 入金ステータス別サマリ */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs text-gray-500">未消込</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">¥{summary.unmatchedAmount.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">未消込入金</p>
+          <p className="text-xl font-bold text-red-600 mt-1">¥{summary.unmatchedAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.unmatchedCount}件</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs text-gray-500">要確認</p>
-          <p className="text-2xl font-bold text-yellow-600 mt-1">¥{summary.reviewAmount.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">要確認入金</p>
+          <p className="text-xl font-bold text-yellow-600 mt-1">¥{summary.reviewAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.reviewCount}件</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs text-gray-500">消込済（累計）</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">¥{summary.matchedAmount.toLocaleString()}</p>
+          <p className="text-xs text-gray-500">消込済入金</p>
+          <p className="text-xl font-bold text-green-600 mt-1">¥{summary.matchedAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.matchedCount}件</p>
         </div>
       </div>
 
-      {/* Upload + Filters */}
+      {/* Filter + Upload */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2 flex-wrap">
-          {FILTERS.map(f => (
-            <button key={f.key} onClick={() => setFilter(f.key)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                filter === f.key
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}>
-              {f.label}
-            </button>
-          ))}
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* 方向フィルタ */}
+          <div className="flex gap-1">
+            {DIRECTION_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setDirectionFilter(f.key)}
+                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                  directionFilter === f.key
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* 月フィルタ */}
+          {availableMonths.length > 0 && (
+            <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white">
+              <option value="">全月</option>
+              {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          )}
+          {/* ステータスフィルタ（入金時のみ意味あり） */}
+          {directionFilter !== 'OUT' && (
+            <div className="flex gap-1">
+              {STATUS_FILTERS.map(f => (
+                <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                    statusFilter === f.key
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleUpload} className="hidden" />
@@ -233,16 +334,18 @@ export default function PaymentsClient({
         {filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-500">
             {payments.length === 0
-              ? 'まだ入金データがありません。右上の「CSVを取り込む」から開始してください。'
-              : '該当する入金はありません'}
+              ? 'まだ入出金データがありません。右上の「CSVを取り込む」から開始してください。'
+              : '該当する取引はありません'}
           </div>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
-                <th className="text-left px-4 py-2 font-medium">取引日</th>
-                <th className="text-left px-4 py-2 font-medium">送金者名</th>
+                <th className="text-left px-4 py-2 font-medium w-20">取引日</th>
+                <th className="text-center px-2 py-2 font-medium w-16">区分</th>
+                <th className="text-left px-4 py-2 font-medium">相手</th>
                 <th className="text-right px-4 py-2 font-medium">金額</th>
+                <th className="text-right px-4 py-2 font-medium">残高</th>
                 <th className="text-left px-4 py-2 font-medium">ステータス</th>
                 <th className="text-left px-4 py-2 font-medium">割当先</th>
                 <th className="text-right px-4 py-2 font-medium">操作</th>
@@ -250,15 +353,30 @@ export default function PaymentsClient({
             </thead>
             <tbody>
               {filtered.map(p => {
+                const isIn = p.direction === 'IN'
                 const meta = STATUS_META[p.matchStatus] || { label: p.matchStatus, color: 'bg-gray-100 text-gray-600' }
                 return (
                   <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 align-top">
                     <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(p.transactionDate)}</td>
+                    <td className="px-2 py-3 text-center">
+                      {isIn ? (
+                        <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">⬆入金</span>
+                      ) : (
+                        <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">⬇出金</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       <p className="font-medium text-gray-900">{p.payerName}</p>
-                      <p className="text-[10px] text-gray-400 font-mono">{p.payerNameNormalized}</p>
+                      {p.description && p.description !== p.payerName && (
+                        <p className="text-[10px] text-gray-400 truncate max-w-xs">{p.description}</p>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">¥{p.amount.toLocaleString()}</td>
+                    <td className={`px-4 py-3 text-sm text-right font-medium ${isIn ? 'text-green-700' : 'text-red-700'}`}>
+                      {isIn ? '+' : '−'}¥{p.amount.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-600">
+                      {p.balance !== null ? `¥${p.balance.toLocaleString()}` : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${meta.color}`}>
                         {meta.label}
@@ -283,10 +401,10 @@ export default function PaymentsClient({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {p.matchStatus !== 'AUTO_MATCHED' && p.matchStatus !== 'MANUAL_MATCHED' && (
+                      {isIn && p.matchStatus !== 'AUTO_MATCHED' && p.matchStatus !== 'MANUAL_MATCHED' && (
                         <button onClick={() => { setOpenPaymentId(p.id === openPaymentId ? null : p.id); setArSearch('') }}
                           className="text-[10px] px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-                          {openPaymentId === p.id ? '閉じる' : '消込する'}
+                          消込
                         </button>
                       )}
                     </td>

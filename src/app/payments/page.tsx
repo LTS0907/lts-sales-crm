@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import PaymentsClient from '@/components/payments/PaymentsClient'
 
 export default async function PaymentsPage() {
-  const [payments, ars] = await Promise.all([
+  const [payments, ars, latestWithBalance] = await Promise.all([
     prisma.paymentTransaction.findMany({
       include: {
         Allocations: {
@@ -15,8 +15,8 @@ export default async function PaymentsPage() {
           },
         },
       },
-      orderBy: [{ matchStatus: 'asc' }, { transactionDate: 'desc' }],
-      take: 500,
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+      take: 1000,
     }),
     prisma.accountsReceivable.findMany({
       where: { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } },
@@ -24,6 +24,12 @@ export default async function PaymentsPage() {
         Contact: { select: { id: true, name: true, nameKana: true, company: true } },
       },
       orderBy: [{ dueDate: 'asc' }],
+    }),
+    // 最新の残高を取得（balance が設定されている最新取引）
+    prisma.paymentTransaction.findFirst({
+      where: { balance: { not: null } },
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+      select: { balance: true, transactionDate: true },
     }),
   ])
 
@@ -63,10 +69,15 @@ export default async function PaymentsPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">入金・消込管理</h1>
         <p className="text-sm text-gray-500 mt-1">
-          マネーフォワード / 楽天銀行のCSVをアップロードして売掛金を自動消込します。
+          マネーフォワード / 楽天銀行のCSVをアップロードして口座の入出金を確認・売掛金を消込します。
         </p>
       </div>
-      <PaymentsClient payments={serialized} arsForMatching={serializedArs} />
+      <PaymentsClient
+        payments={serialized}
+        arsForMatching={serializedArs}
+        latestBalance={latestWithBalance?.balance ?? null}
+        latestBalanceDate={latestWithBalance?.transactionDate.toISOString() ?? null}
+      />
     </div>
   )
 }

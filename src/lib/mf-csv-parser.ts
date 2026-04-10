@@ -7,18 +7,21 @@
  *  2. 補助元帳CSV (会計帳簿 → 補助元帳 / 勘定科目=普通預金・楽天銀行)
  *  3. 連携取引明細 (自動取引仕訳 → 楽天銀行の未仕訳CSV)
  *
- * すべて「楽天銀行への入金のみ」を抽出対象とする。
+ * 楽天銀行の入金（IN）と出金（OUT）を両方抽出し、残高列があれば取得する。
  * 判定基準:
- *  - 借方勘定科目が「普通預金」or 「預金」系
- *  - 借方補助科目/摘要に「楽天」を含む
- *  - 借方金額 > 0（入金）
+ *  - 借方勘定科目が「普通預金」or 「預金」系 + 「楽天」含む → IN
+ *  - 貸方勘定科目が「普通預金」or 「預金」系 + 「楽天」含む → OUT
+ *  - または簡易明細の入出金区分
  */
 import { parse } from 'csv-parse/sync'
 
 export interface ParsedTransaction {
   transactionDate: Date
-  amount: number
-  payerName: string
+  direction: 'IN' | 'OUT'
+  amount: number          // 常に正の値
+  balance: number | null  // 取引後残高（わかれば）
+  payerName: string       // 相手方名義
+  description: string     // 摘要全文
   rawRow: Record<string, string>
 }
 
@@ -31,7 +34,6 @@ export interface ParseResult {
 
 /**
  * Shift_JIS または UTF-8 の CSV バイナリをテキスト化
- * BOM 検出 + 文字コード自動判定
  */
 export function decodeCsvBuffer(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
@@ -39,7 +41,6 @@ export function decodeCsvBuffer(buf: ArrayBuffer | Uint8Array): string {
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     return new TextDecoder('utf-8').decode(bytes.slice(3))
   }
-  // Try UTF-8 first; if it has replacement chars, fall back to Shift_JIS
   const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
   if (!utf8.includes('\ufffd')) return utf8
   try {
@@ -63,27 +64,18 @@ function parseAmount(s: string): number {
   return isNaN(n) ? 0 : n
 }
 
-function isBankDepositAccount(debitAccount: string, debitSub: string, description: string): boolean {
-  // 勘定科目が「普通預金」または「当座預金」
-  const acct = (debitAccount || '').trim()
+function isRakutenDepositAccount(account: string, sub: string, description: string): boolean {
+  const acct = (account || '').trim()
   if (!acct) return false
   if (!['普通預金', '当座預金', '預金'].some(k => acct.includes(k))) return false
-  // 補助科目 or 摘要に「楽天」を含む
-  const sub = (debitSub || '').trim()
+  const s = (sub || '').trim()
   const desc = (description || '').trim()
-  return sub.includes('楽天') || desc.includes('楽天') || sub.includes('Rakuten') || desc.includes('Rakuten')
+  return s.includes('楽天') || desc.includes('楽天') || s.includes('Rakuten') || desc.includes('Rakuten')
 }
 
 /**
- * 仕訳帳CSV または補助元帳CSV をパース
- *
- * 柔軟な列名検出で、以下のパターンを許容:
- *  - 「取引日」「日付」
- *  - 「借方勘定科目」「借方科目」
- *  - 「借方補助科目」「借方補助」
- *  - 「借方金額」「金額」（単列の場合は借方と判断）
- *  - 「摘要」「適用」「メモ」「内容」
- *  - 「取引先」「貸方取引先」「借方取引先」
+ * 仕訳帳 / 補助元帳 / 入出金明細 CSV をパースする
+ * 入金/出金/残高すべて抽出
  */
 export function parseMfCsv(csvText: string): ParseResult {
   const errors: string[] = []
@@ -105,7 +97,6 @@ export function parseMfCsv(csvText: string): ParseResult {
     return { transactions: [], skipped: 0, format: 'unknown', errors: ['レコードがありません'] }
   }
 
-  // 列名検出
   const headers = Object.keys(records[0])
   const findCol = (patterns: RegExp[]): string | null => {
     for (const p of patterns) {
@@ -118,18 +109,22 @@ export function parseMfCsv(csvText: string): ParseResult {
   const dateCol = findCol([/取引日/, /^日付/, /計上日/])
   const debitAcctCol = findCol([/借方.*勘定/, /借方科目/])
   const debitSubCol = findCol([/借方.*補助/])
-  const debitAmountCol = findCol([/借方.*金額/, /^入金/, /^入金額/])
-  const creditAmountCol = findCol([/貸方.*金額/, /^出金/, /^出金額/])
+  const debitAmountCol = findCol([/借方.*金額/])
+  const creditAcctCol = findCol([/貸方.*勘定/, /貸方科目/])
+  const creditSubCol = findCol([/貸方.*補助/])
+  const creditAmountCol = findCol([/貸方.*金額/])
   const descCol = findCol([/摘要/, /適用/, /内容/, /メモ/])
   const partnerCol = findCol([/貸方.*取引先/, /借方.*取引先/, /^取引先/])
-  // 単純な入出金明細の場合
+  const balanceCol = findCol([/^残高/, /差引残高/, /取引後残高/])
+  // 簡易明細
+  const simpleDepositCol = findCol([/^入金/, /^入金額/])
+  const simpleWithdrawCol = findCol([/^出金/, /^出金額/])
   const simpleAmountCol = findCol([/^金額$/])
   const simpleInOutCol = findCol([/^区分$/, /^入出金/])
 
-  // フォーマット推定
   let format: ParseResult['format'] = 'unknown'
-  if (debitAcctCol && (debitAmountCol || descCol)) format = 'journal'
-  else if (simpleAmountCol && (simpleInOutCol || descCol)) format = 'ledger'
+  if (debitAcctCol && (debitAmountCol || creditAmountCol)) format = 'journal'
+  else if ((simpleDepositCol || simpleWithdrawCol || simpleAmountCol) && descCol) format = 'ledger'
 
   const transactions: ParsedTransaction[] = []
   let skipped = 0
@@ -139,46 +134,75 @@ export function parseMfCsv(csvText: string): ParseResult {
     const date = parseDate(dateRaw)
     if (!date) { skipped++; continue }
 
+    const desc = descCol ? (row[descCol] || '') : ''
+    const balance = balanceCol ? (parseAmount(row[balanceCol]) || null) : null
+
+    let direction: 'IN' | 'OUT' | null = null
     let amount = 0
-    let isDeposit = false
     let payerName = ''
 
     if (format === 'journal') {
       const debitAcct = debitAcctCol ? row[debitAcctCol] : ''
       const debitSub = debitSubCol ? row[debitSubCol] : ''
-      const desc = descCol ? row[descCol] : ''
       const debitAmount = debitAmountCol ? parseAmount(row[debitAmountCol]) : 0
+      const creditAcct = creditAcctCol ? row[creditAcctCol] : ''
+      const creditSub = creditSubCol ? row[creditSubCol] : ''
       const creditAmount = creditAmountCol ? parseAmount(row[creditAmountCol]) : 0
 
-      // 楽天銀行の入金（借方が普通預金、かつ借方金額 > 0）
-      if (isBankDepositAccount(debitAcct, debitSub, desc) && debitAmount > 0) {
-        isDeposit = true
+      // 楽天銀行が借方（入金）
+      if (isRakutenDepositAccount(debitAcct, debitSub, desc) && debitAmount > 0) {
+        direction = 'IN'
         amount = debitAmount
-        // 名前抽出優先: 取引先列 > 摘要
         payerName = (partnerCol && row[partnerCol]) || extractPayerFromDescription(desc) || desc
       }
-      void creditAmount // eslint
-    } else if (format === 'ledger') {
-      const amtRaw = simpleAmountCol ? row[simpleAmountCol] : ''
-      const inOut = simpleInOutCol ? row[simpleInOutCol] : ''
-      const desc = descCol ? row[descCol] : ''
-      const amt = parseAmount(amtRaw)
-      if (/入金|入/.test(inOut) && amt > 0) {
-        isDeposit = true
-        amount = amt
+      // 楽天銀行が貸方（出金）
+      else if (isRakutenDepositAccount(creditAcct, creditSub, desc) && creditAmount > 0) {
+        direction = 'OUT'
+        amount = creditAmount
         payerName = (partnerCol && row[partnerCol]) || extractPayerFromDescription(desc) || desc
+      }
+    } else if (format === 'ledger') {
+      // 入金列・出金列が別々の場合
+      if (simpleDepositCol) {
+        const dep = parseAmount(row[simpleDepositCol])
+        if (dep > 0) {
+          direction = 'IN'
+          amount = dep
+          payerName = (partnerCol && row[partnerCol]) || extractPayerFromDescription(desc) || desc
+        }
+      }
+      if (!direction && simpleWithdrawCol) {
+        const wd = parseAmount(row[simpleWithdrawCol])
+        if (wd > 0) {
+          direction = 'OUT'
+          amount = wd
+          payerName = (partnerCol && row[partnerCol]) || extractPayerFromDescription(desc) || desc
+        }
+      }
+      // 金額+区分
+      if (!direction && simpleAmountCol) {
+        const amt = parseAmount(row[simpleAmountCol])
+        const inOut = simpleInOutCol ? row[simpleInOutCol] : ''
+        if (amt > 0) {
+          if (/入金|入/.test(inOut)) direction = 'IN'
+          else if (/出金|出/.test(inOut)) direction = 'OUT'
+          else direction = amt > 0 ? 'IN' : 'OUT'
+          amount = Math.abs(amt)
+          payerName = (partnerCol && row[partnerCol]) || extractPayerFromDescription(desc) || desc
+        }
       }
     }
 
-    if (!isDeposit) { skipped++; continue }
-    if (amount <= 0) { skipped++; continue }
-    payerName = (payerName || '').trim().slice(0, 200)
-    if (!payerName) payerName = '不明'
+    if (!direction || amount <= 0) { skipped++; continue }
+    payerName = (payerName || '').trim().slice(0, 200) || '不明'
 
     transactions.push({
       transactionDate: date,
+      direction,
       amount,
+      balance,
       payerName,
+      description: (desc || '').slice(0, 500),
       rawRow: row,
     })
   }
@@ -186,15 +210,9 @@ export function parseMfCsv(csvText: string): ParseResult {
   return { transactions, skipped, format, errors }
 }
 
-/**
- * 摘要から送金者名を抽出する
- * 例: "振込 リバテイホ-ム(カ" → "リバテイホ-ム(カ"
- *     "普通振込 カ）ナガサク" → "カ）ナガサク"
- */
 function extractPayerFromDescription(desc: string): string {
   if (!desc) return ''
   let s = desc.trim()
-  // 先頭の「振込」「普通振込」「自動振込」「ATM振込」等を除去
   s = s.replace(/^(ATM振込|普通振込|自動振込|振込|入金|振替)\s*/, '')
   return s
 }
