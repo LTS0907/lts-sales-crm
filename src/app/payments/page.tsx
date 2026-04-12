@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import PaymentsClient from '@/components/payments/PaymentsClient'
 
 export default async function PaymentsPage() {
-  const [payments, ars, latestWithBalance] = await Promise.all([
+  const [payments, ars, latestWithBalance, contactsForAr] = await Promise.all([
     prisma.paymentTransaction.findMany({
       include: {
         Allocations: {
@@ -30,6 +30,13 @@ export default async function PaymentsPage() {
       where: { balance: { not: null } },
       orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
       select: { balance: true, transactionDate: true },
+    }),
+    // Contact一覧（AR新規作成用）
+    prisma.contact.findMany({
+      where: { id: { not: 'OTHER_REVENUE' } },
+      select: { id: true, name: true, nameKana: true, company: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
     }),
   ])
 
@@ -75,6 +82,7 @@ export default async function PaymentsPage() {
       <PaymentsClient
         payments={serialized}
         arsForMatching={serializedArs}
+        contactsForAr={contactsForAr}
         latestBalance={latestWithBalance?.balance ?? null}
         latestBalanceDate={latestWithBalance?.transactionDate.toISOString() ?? null}
       />

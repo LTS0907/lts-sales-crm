@@ -251,7 +251,7 @@ model PaymentTransaction {
   payerNameNormalized String              // 正規化済み（マッチング用）
   payerType           String              @default("UNKNOWN") // COMPANY / PERSON / UNKNOWN
   rawData             Json?
-  matchStatus         String              @default("UNMATCHED") // UNMATCHED / AUTO_MATCHED / MANUAL_MATCHED / IGNORED / NEEDS_REVIEW
+  matchStatus         String              @default("UNMATCHED") // UNMATCHED / NEEDS_REVIEW / AUTO_MATCHED / MANUAL_MATCHED / OTHER_REVENUE / IGNORED
   reviewNote          String?
   Allocations         PaymentAllocation[]
 

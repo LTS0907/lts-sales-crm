@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { getPhasesForService } from '@/lib/service-phases'
 import { refreshOverdueStatus } from '@/lib/accounts-receivable'
 import RevenueByYearTable from '@/components/revenue/RevenueByYearTable'
+import ReconciliationSection from '@/components/payments/ReconciliationSection'
+import { normalizePayerName, matchPaymentToAR, type MatchableAR } from '@/lib/payment-matching'
 
 const SERVICES = [
   { name: '生成AI活用セミナー', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500' },
@@ -38,7 +40,7 @@ export default async function Dashboard() {
   // 期日超過チェック（OPEN/PARTIAL → OVERDUE）
   await refreshOverdueStatus()
 
-  const [contacts, servicePhases, billingRecords, receivables, revenues] = await Promise.all([
+  const [contacts, servicePhases, billingRecords, receivables, revenues, needsReviewPayments, unmatchedPayments] = await Promise.all([
     prisma.contact.findMany({
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -71,6 +73,17 @@ export default async function Dashboard() {
     }),
     prisma.revenue.findMany({
       select: { fiscalMonth: true, totalAmount: true },
+    }),
+    // 消込候補（NEEDS_REVIEW）の入金を取得
+    prisma.paymentTransaction.findMany({
+      where: { direction: 'IN', matchStatus: 'NEEDS_REVIEW' },
+      orderBy: { transactionDate: 'desc' },
+      take: 20,
+    }),
+    // 未消込（UNMATCHED）の入金を取得
+    prisma.paymentTransaction.findMany({
+      where: { direction: 'IN', matchStatus: 'UNMATCHED' },
+      orderBy: { transactionDate: 'desc' },
     }),
   ])
 
@@ -185,6 +198,44 @@ export default async function Dashboard() {
             </div>
           )}
       </div>
+
+      {/* 消込セクション */}
+      {(() => {
+        // NEEDS_REVIEW の入金に対してマッチング候補を構築
+        const openArs = receivables as unknown as MatchableAR[]
+        const candidates = needsReviewPayments.flatMap(p => {
+          const match = matchPaymentToAR(p.amount, p.payerNameNormalized, openArs)
+          if (match.candidates.length === 0) return []
+          const best = match.candidates[0]
+          // receivables からフル情報を引く（MatchableAR には serviceName がないため）
+          const fullAr = receivables.find(r => r.id === best.ar.id)
+          return [{
+            paymentId: p.id,
+            paymentDate: p.transactionDate.toISOString(),
+            payerName: p.payerName,
+            paymentAmount: p.amount,
+            arId: best.ar.id,
+            arContact: best.ar.Contact.company || best.ar.Contact.name,
+            arService: fullAr?.serviceName || '',
+            arRemaining: best.ar.amount - best.ar.paidAmount,
+            score: best.score,
+          }]
+        })
+
+        const unmatchedForSection = unmatchedPayments.map(p => ({
+          id: p.id,
+          transactionDate: p.transactionDate.toISOString(),
+          payerName: p.payerName,
+          amount: p.amount,
+        }))
+
+        return (
+          <ReconciliationSection
+            candidates={candidates}
+            unmatchedPayments={unmatchedForSection}
+          />
+        )
+      })()}
 
       {/* 売掛金セクション */}
       <div className="mb-8">

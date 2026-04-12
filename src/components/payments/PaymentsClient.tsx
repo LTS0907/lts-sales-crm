@@ -46,11 +46,19 @@ interface Payment {
   Allocations: Allocation[]
 }
 
+interface ContactForAr {
+  id: string
+  name: string
+  nameKana: string | null
+  company: string | null
+}
+
 const STATUS_META: Record<string, { label: string; color: string }> = {
   UNMATCHED:       { label: '未消込',      color: 'bg-red-100 text-red-700' },
   NEEDS_REVIEW:    { label: '要確認',      color: 'bg-yellow-100 text-yellow-700' },
   AUTO_MATCHED:    { label: '自動消込済',  color: 'bg-green-100 text-green-700' },
   MANUAL_MATCHED:  { label: '手動消込済',  color: 'bg-blue-100 text-blue-700' },
+  OTHER_REVENUE:   { label: 'その他売上',  color: 'bg-purple-100 text-purple-700' },
   IGNORED:         { label: '対象外',      color: 'bg-gray-100 text-gray-500' },
 }
 
@@ -65,6 +73,7 @@ const STATUS_FILTERS = [
   { key: 'UNMATCHED', label: '未消込' },
   { key: 'NEEDS_REVIEW', label: '要確認' },
   { key: 'MATCHED', label: '消込済' },
+  { key: 'RESOLVED', label: '処理済' },
   { key: 'ALL', label: 'すべて' },
 ]
 
@@ -80,11 +89,13 @@ function fmtMonth(iso: string) {
 export default function PaymentsClient({
   payments: initial,
   arsForMatching,
+  contactsForAr,
   latestBalance,
   latestBalanceDate,
 }: {
   payments: Payment[]
   arsForMatching: ARForMatching[]
+  contactsForAr: ContactForAr[]
   latestBalance: number | null
   latestBalanceDate: string | null
 }) {
@@ -100,6 +111,20 @@ export default function PaymentsClient({
 
   const [openPaymentId, setOpenPaymentId] = useState<string | null>(null)
   const [arSearch, setArSearch] = useState('')
+
+  // 処理オプションのモーダル状態
+  const [actionMenu, setActionMenu] = useState<string | null>(null) // paymentId
+  const [createArModal, setCreateArModal] = useState<string | null>(null) // paymentId
+  const [resolveModal, setResolveModal] = useState<{ paymentId: string; action: 'OTHER_REVENUE' | 'IGNORED' } | null>(null)
+
+  // AR新規作成フォーム
+  const [arContactSearch, setArContactSearch] = useState('')
+  const [arSelectedContact, setArSelectedContact] = useState<ContactForAr | null>(null)
+  const [arServiceName, setArServiceName] = useState('')
+
+  // resolve フォーム
+  const [resolveNote, setResolveNote] = useState('')
+  const [resolveServiceName, setResolveServiceName] = useState('その他売上')
 
   // 月のリスト
   const availableMonths = useMemo(() => {
@@ -117,6 +142,7 @@ export default function PaymentsClient({
     if (directionFilter !== 'OUT') {
       if (statusFilter === 'PENDING') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === 'UNMATCHED' || p.matchStatus === 'NEEDS_REVIEW')
       else if (statusFilter === 'MATCHED') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === 'AUTO_MATCHED' || p.matchStatus === 'MANUAL_MATCHED')
+      else if (statusFilter === 'RESOLVED') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === 'OTHER_REVENUE' || p.matchStatus === 'IGNORED')
       else if (statusFilter !== 'ALL') list = list.filter(p => p.direction === 'OUT' || p.matchStatus === statusFilter)
     }
     // 月フィルタ
@@ -191,6 +217,65 @@ export default function PaymentsClient({
     if (res.ok) router.refresh()
     else alert('取消失敗')
   }
+
+  async function handleCreateArAndAllocate(paymentId: string) {
+    if (!arSelectedContact || !arServiceName) {
+      alert('顧客とサービス名を入力してください')
+      return
+    }
+    const res = await fetch(`/api/payments/${paymentId}/create-ar-and-allocate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contactId: arSelectedContact.id,
+        serviceName: arServiceName,
+      }),
+    })
+    if (res.ok) {
+      setCreateArModal(null)
+      setArSelectedContact(null)
+      setArServiceName('')
+      setArContactSearch('')
+      router.refresh()
+    } else {
+      const err = await res.json().catch(() => ({ error: 'エラー' }))
+      alert(err.error || '処理失敗')
+    }
+  }
+
+  async function handleResolve() {
+    if (!resolveModal) return
+    const res = await fetch(`/api/payments/${resolveModal.paymentId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: resolveModal.action,
+        note: resolveNote || undefined,
+        serviceName: resolveModal.action === 'OTHER_REVENUE' ? resolveServiceName : undefined,
+      }),
+    })
+    if (res.ok) {
+      setResolveModal(null)
+      setResolveNote('')
+      setResolveServiceName('その他売上')
+      router.refresh()
+    } else {
+      const err = await res.json().catch(() => ({ error: 'エラー' }))
+      alert(err.error || '処理失敗')
+    }
+  }
+
+  const filteredContacts = useMemo(() => {
+    const q = arContactSearch.toLowerCase().trim()
+    if (!q) return contactsForAr.slice(0, 20)
+    return contactsForAr
+      .filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.company || '').toLowerCase().includes(q) ||
+        (c.nameKana || '').toLowerCase().includes(q)
+      )
+      .slice(0, 20)
+  }, [contactsForAr, arContactSearch])
 
   const filteredArs = useMemo(() => {
     const q = arSearch.toLowerCase().trim()
@@ -400,12 +485,41 @@ export default function PaymentsClient({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {isIn && p.matchStatus !== 'AUTO_MATCHED' && p.matchStatus !== 'MANUAL_MATCHED' && (
-                        <button onClick={() => { setOpenPaymentId(p.id === openPaymentId ? null : p.id); setArSearch('') }}
-                          className="text-[10px] px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-                          消込
-                        </button>
+                    <td className="px-4 py-3 text-right relative">
+                      {isIn && !['AUTO_MATCHED', 'MANUAL_MATCHED', 'OTHER_REVENUE', 'IGNORED'].includes(p.matchStatus) && (
+                        <div className="inline-block">
+                          <button onClick={() => setActionMenu(actionMenu === p.id ? null : p.id)}
+                            className="text-[10px] px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                            処理 ▼
+                          </button>
+                          {actionMenu === p.id && (
+                            <div className="absolute right-4 top-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48"
+                              onMouseLeave={() => setActionMenu(null)}>
+                              <button onClick={() => { setOpenPaymentId(p.id); setArSearch(''); setActionMenu(null) }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
+                                🔗 売掛と一致させる
+                              </button>
+                              <button onClick={() => { setCreateArModal(p.id); setArSelectedContact(null); setArServiceName(''); setArContactSearch(''); setActionMenu(null) }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
+                                ➕ 売掛を作って一致
+                              </button>
+                              <button onClick={() => { setResolveModal({ paymentId: p.id, action: 'OTHER_REVENUE' }); setResolveNote(''); setResolveServiceName('その他売上'); setActionMenu(null) }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-purple-50 text-gray-700">
+                                💰 その他売上として処理
+                              </button>
+                              <button onClick={() => { setResolveModal({ paymentId: p.id, action: 'IGNORED' }); setResolveNote(''); setActionMenu(null) }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 text-gray-500">
+                                🚫 売上として計上しない
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {isIn && p.matchStatus === 'IGNORED' && (
+                        <span className="text-[10px] text-gray-400">{p.reviewNote || '対象外'}</span>
+                      )}
+                      {isIn && p.matchStatus === 'OTHER_REVENUE' && (
+                        <span className="text-[10px] text-purple-500">{p.reviewNote || 'その他売上'}</span>
                       )}
                     </td>
                   </tr>
@@ -416,7 +530,7 @@ export default function PaymentsClient({
         )}
       </div>
 
-      {/* Allocation modal (inline) */}
+      {/* A) 売掛と一致させるモーダル */}
       {openPaymentId && (() => {
         const payment = payments.find(p => p.id === openPaymentId)
         if (!payment) return null
@@ -424,7 +538,7 @@ export default function PaymentsClient({
           <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={() => setOpenPaymentId(null)}>
             <div className="bg-white rounded-xl max-w-3xl w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
               <div className="p-4 border-b">
-                <h2 className="text-sm font-bold">消込先を選択</h2>
+                <h2 className="text-sm font-bold">🔗 売掛と一致させる</h2>
                 <p className="text-xs text-gray-500 mt-1">
                   {payment.payerName} / ¥{payment.amount.toLocaleString()} / {fmtDate(payment.transactionDate)}
                 </p>
@@ -483,6 +597,160 @@ export default function PaymentsClient({
               <div className="p-4 border-t">
                 <button onClick={() => setOpenPaymentId(null)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">閉じる</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* B) 売掛を作って一致させるモーダル */}
+      {createArModal && (() => {
+        const payment = payments.find(p => p.id === createArModal)
+        if (!payment) return null
+        return (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={() => setCreateArModal(null)}>
+            <div className="bg-white rounded-xl max-w-lg w-full max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b">
+                <h2 className="text-sm font-bold">➕ 売掛を作って一致させる</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {payment.payerName} / ¥{payment.amount.toLocaleString()} / {fmtDate(payment.transactionDate)}
+                </p>
+              </div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+                {/* 顧客選択 */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">顧客を選択</label>
+                  {arSelectedContact ? (
+                    <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                      <span className="text-sm font-medium text-blue-800">
+                        {arSelectedContact.company || arSelectedContact.name}
+                      </span>
+                      <button onClick={() => setArSelectedContact(null)}
+                        className="text-xs text-red-500 hover:underline ml-auto">変更</button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="顧客名で検索..."
+                        value={arContactSearch}
+                        onChange={e => setArContactSearch(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        autoFocus
+                      />
+                      <div className="mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                        {filteredContacts.map(c => (
+                          <button key={c.id} onClick={() => { setArSelectedContact(c); setArContactSearch('') }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 border-b border-gray-50">
+                            <span className="font-medium">{c.company || c.name}</span>
+                            {c.company && <span className="text-gray-400 ml-2">{c.name}</span>}
+                          </button>
+                        ))}
+                        {filteredContacts.length === 0 && (
+                          <p className="p-3 text-xs text-gray-400 text-center">該当なし</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* サービス名 */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">サービス名</label>
+                  <input
+                    type="text"
+                    placeholder="例: IT内製化支援"
+                    value={arServiceName}
+                    onChange={e => setArServiceName(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+
+                {/* 金額（プリフィル） */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">金額（税込）</label>
+                  <p className="text-lg font-bold text-gray-900">¥{payment.amount.toLocaleString()}</p>
+                  <p className="text-[10px] text-gray-400">入金額と同額で売掛を作成します</p>
+                </div>
+              </div>
+              <div className="p-4 border-t flex gap-2">
+                <button onClick={() => setCreateArModal(null)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">キャンセル</button>
+                <button onClick={() => handleCreateArAndAllocate(payment.id)}
+                  disabled={!arSelectedContact || !arServiceName}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 font-medium">
+                  売掛作成 & 消込
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* C/D) その他売上 or 対象外モーダル */}
+      {resolveModal && (() => {
+        const payment = payments.find(p => p.id === resolveModal.paymentId)
+        if (!payment) return null
+        const isOtherRevenue = resolveModal.action === 'OTHER_REVENUE'
+        return (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={() => setResolveModal(null)}>
+            <div className="bg-white rounded-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b">
+                <h2 className="text-sm font-bold">
+                  {isOtherRevenue ? '💰 その他売上として処理' : '🚫 売上として計上しない'}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {payment.payerName} / ¥{payment.amount.toLocaleString()} / {fmtDate(payment.transactionDate)}
+                </p>
+              </div>
+              <div className="p-4 space-y-4">
+                {isOtherRevenue && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">売上名</label>
+                    <input
+                      type="text"
+                      value={resolveServiceName}
+                      onChange={e => setResolveServiceName(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    {isOtherRevenue ? 'メモ（任意）' : '理由メモ（任意）'}
+                  </label>
+                  <textarea
+                    value={resolveNote}
+                    onChange={e => setResolveNote(e.target.value)}
+                    placeholder={isOtherRevenue ? '補足があれば入力' : '例: 返金、誤入金、内部振替'}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                {isOtherRevenue && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <p className="text-xs text-purple-700">
+                      売掛を経由せず「その他売上」として ¥{payment.amount.toLocaleString()} を計上します。
+                    </p>
+                  </div>
+                )}
+                {!isOtherRevenue && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <p className="text-xs text-gray-600">
+                      この入金を売上として計上しません。返金・誤入金・内部振替などが該当します。
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t flex gap-2">
+                <button onClick={() => setResolveModal(null)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">キャンセル</button>
+                <button onClick={handleResolve}
+                  className={`flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium ${
+                    isOtherRevenue ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'
+                  }`}>
+                  {isOtherRevenue ? 'その他売上として計上' : '対象外にする'}
+                </button>
               </div>
             </div>
           </div>
