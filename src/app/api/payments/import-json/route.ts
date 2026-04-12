@@ -129,13 +129,10 @@ export async function POST(request: Request) {
         continue
       }
 
-      // IN: マッチング試行
+      // IN: マッチング候補を探す（自動消込はしない、全て NEEDS_REVIEW）
       const match = matchPaymentToAR(Math.abs(tx.amount), normalized, openArs)
-      let matchStatus: 'UNMATCHED' | 'NEEDS_REVIEW' | 'AUTO_MATCHED' = 'UNMATCHED'
-      if (match.autoMatched && match.bestMatch) {
-        matchStatus = 'AUTO_MATCHED'
-        autoMatched++
-      } else if (match.candidates.length > 0) {
+      let matchStatus: 'UNMATCHED' | 'NEEDS_REVIEW' = 'UNMATCHED'
+      if (match.candidates.length > 0) {
         matchStatus = 'NEEDS_REVIEW'
         needsReview++
       } else {
@@ -160,7 +157,9 @@ export async function POST(request: Request) {
           },
         })
 
-        if (matchStatus === 'AUTO_MATCHED' && match.bestMatch) {
+        // 自動消込は行わない — ユーザーが /payments 画面で確認後に手動消込
+        void payment // lint
+        if (false && match.bestMatch) { // 無効化: 将来再有効化する場合のために残す
           const ar = match.bestMatch.ar
           await tx2.paymentAllocation.create({
             data: {
