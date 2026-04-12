@@ -114,6 +114,7 @@ export default function PaymentsClient({
 
   // 処理オプションのモーダル状態
   const [actionMenu, setActionMenu] = useState<string | null>(null) // paymentId
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const [createArModal, setCreateArModal] = useState<string | null>(null) // paymentId
   const [resolveModal, setResolveModal] = useState<{ paymentId: string; action: 'OTHER_REVENUE' | 'IGNORED' } | null>(null)
 
@@ -415,7 +416,7 @@ export default function PaymentsClient({
       )}
 
       {/* List */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-500">
             {payments.length === 0
@@ -485,35 +486,17 @@ export default function PaymentsClient({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right relative">
+                    <td className="px-4 py-3 text-right">
                       {isIn && !['AUTO_MATCHED', 'MANUAL_MATCHED', 'OTHER_REVENUE', 'IGNORED'].includes(p.matchStatus) && (
-                        <div className="inline-block">
-                          <button onClick={() => setActionMenu(actionMenu === p.id ? null : p.id)}
-                            className="text-[10px] px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-                            処理 ▼
-                          </button>
-                          {actionMenu === p.id && (
-                            <div className="absolute right-0 bottom-full mb-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48"
-                              onMouseLeave={() => setActionMenu(null)}>
-                              <button onClick={() => { setOpenPaymentId(p.id); setArSearch(''); setActionMenu(null) }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
-                                🔗 売掛と一致させる
-                              </button>
-                              <button onClick={() => { setCreateArModal(p.id); setArSelectedContact(null); setArServiceName(''); setArContactSearch(''); setActionMenu(null) }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
-                                ➕ 売掛を作って一致
-                              </button>
-                              <button onClick={() => { setResolveModal({ paymentId: p.id, action: 'OTHER_REVENUE' }); setResolveNote(''); setResolveServiceName('その他売上'); setActionMenu(null) }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-purple-50 text-gray-700">
-                                💰 その他売上として処理
-                              </button>
-                              <button onClick={() => { setResolveModal({ paymentId: p.id, action: 'IGNORED' }); setResolveNote(''); setActionMenu(null) }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 text-gray-500">
-                                🚫 売上として計上しない
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <button onClick={(e) => {
+                          if (actionMenu === p.id) { setActionMenu(null); return }
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          setMenuPos({ top: rect.top, left: rect.right - 192 })
+                          setActionMenu(p.id)
+                        }}
+                          className="text-[10px] px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                          処理 ▼
+                        </button>
                       )}
                       {isIn && p.matchStatus === 'IGNORED' && (
                         <span className="text-[10px] text-gray-400">{p.reviewNote || '対象外'}</span>
@@ -529,6 +512,34 @@ export default function PaymentsClient({
           </table>
         )}
       </div>
+
+      {/* 処理メニュー（fixed overlay） */}
+      {actionMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setActionMenu(null)} />
+          <div
+            className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48"
+            style={{ top: menuPos.top - 160, left: menuPos.left }}
+          >
+            <button onClick={() => { setOpenPaymentId(actionMenu); setArSearch(''); setActionMenu(null) }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
+              🔗 売掛と一致させる
+            </button>
+            <button onClick={() => { setCreateArModal(actionMenu); setArSelectedContact(null); setArServiceName(''); setArContactSearch(''); setActionMenu(null) }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
+              ➕ 売掛を作って一致
+            </button>
+            <button onClick={() => { setResolveModal({ paymentId: actionMenu, action: 'OTHER_REVENUE' }); setResolveNote(''); setResolveServiceName('その他売上'); setActionMenu(null) }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-purple-50 text-gray-700">
+              💰 その他売上として処理
+            </button>
+            <button onClick={() => { setResolveModal({ paymentId: actionMenu, action: 'IGNORED' }); setResolveNote(''); setActionMenu(null) }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 text-gray-500">
+              🚫 売上として計上しない
+            </button>
+          </div>
+        </>
+      )}
 
       {/* A) 売掛と一致させるモーダル */}
       {openPaymentId && (() => {
