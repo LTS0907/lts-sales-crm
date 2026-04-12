@@ -119,29 +119,7 @@ export async function POST(request: Request) {
         })
 
         // 自動消込は行わない — ユーザーが /payments 画面で確認後に手動消込
-        void payment // lint
-        if (false && match.bestMatch) { // 無効化
-          const ar = match.bestMatch.ar
-          await tx2.paymentAllocation.create({
-            data: {
-              paymentTransactionId: payment.id,
-              accountsReceivableId: ar.id,
-              allocatedAmount: tx.amount,
-            },
-          })
-          const newPaid = ar.paidAmount + tx.amount
-          const newStatus = deriveStatusFromPayment(ar.amount, newPaid, ar.status)
-          await tx2.accountsReceivable.update({
-            where: { id: ar.id },
-            data: {
-              paidAmount: newPaid,
-              status: newStatus,
-              paidAt: newStatus === 'PAID' ? new Date() : undefined,
-            },
-          })
-          ar.paidAmount = newPaid
-          ar.status = newStatus
-        }
+        void payment
       })
 
       created++
