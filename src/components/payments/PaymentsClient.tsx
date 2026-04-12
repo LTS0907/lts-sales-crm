@@ -415,7 +415,7 @@ export default function PaymentsClient({
       )}
 
       {/* List */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
         {filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-500">
             {payments.length === 0
@@ -493,7 +493,7 @@ export default function PaymentsClient({
                             処理 ▼
                           </button>
                           {actionMenu === p.id && (
-                            <div className="absolute right-4 top-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48"
+                            <div className="absolute right-0 bottom-full mb-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48"
                               onMouseLeave={() => setActionMenu(null)}>
                               <button onClick={() => { setOpenPaymentId(p.id); setArSearch(''); setActionMenu(null) }}
                                 className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 text-gray-700">
