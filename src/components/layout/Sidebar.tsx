@@ -6,6 +6,7 @@ import LogoutButton from './LogoutButton'
 const nav = [
   { section: '名刺管理', items: [
     { href: '/contacts', label: '名刺一覧', icon: '👤' },
+    { href: '/contacts/bulk-scan', label: '一括スキャン', icon: '📷' },
     { href: '/calendar', label: 'カレンダー', icon: '📅' },
     { href: '/groups', label: 'グループ', icon: '🏢' },
     { href: '/search', label: '検索', icon: '🔍' },
