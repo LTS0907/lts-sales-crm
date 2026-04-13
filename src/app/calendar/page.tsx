@@ -35,6 +35,53 @@ interface GoogleEvent {
   description?: string
   htmlLink?: string
   allDay: boolean
+  calendarId?: string
+  calendarName?: string
+}
+
+// カレンダーIDに対応する色設定
+const CALENDAR_COLORS: Record<string, { bg: string; text: string; allDayBg: string; allDayText: string; hover: string; dot: string }> = {
+  primary: {
+    bg: 'bg-blue-500',
+    text: 'text-white',
+    allDayBg: 'bg-blue-100',
+    allDayText: 'text-blue-700',
+    hover: 'hover:bg-blue-600',
+    dot: 'bg-blue-500',
+  },
+}
+
+// メールアドレスのローカル部分（@より前）でも引けるようにするルックアップ
+function getCalendarColor(calendarId?: string, calendarName?: string) {
+  if (!calendarId) return CALENDAR_COLORS.primary
+  if (CALENDAR_COLORS[calendarId]) return CALENDAR_COLORS[calendarId]
+  // calendarName でも探す
+  if (calendarName && CALENDAR_COLORS[calendarName]) return CALENDAR_COLORS[calendarName]
+  // primary 以外はすべてオレンジ系
+  return {
+    bg: 'bg-orange-500',
+    text: 'text-white',
+    allDayBg: 'bg-orange-100',
+    allDayText: 'text-orange-700',
+    hover: 'hover:bg-orange-600',
+    dot: 'bg-orange-500',
+  }
+}
+
+// 凡例データを生成（重複なし）
+function buildLegend(events: GoogleEvent[]) {
+  const seen = new Set<string>()
+  const legend: { calendarId: string; calendarName: string }[] = []
+  // primary は必ず先頭
+  legend.push({ calendarId: 'primary', calendarName: 'マイカレンダー' })
+  seen.add('primary')
+  for (const e of events) {
+    if (e.calendarId && e.calendarId !== 'primary' && !seen.has(e.calendarId)) {
+      seen.add(e.calendarId)
+      legend.push({ calendarId: e.calendarId, calendarName: e.calendarName || e.calendarId })
+    }
+  }
+  return legend
 }
 
 type ViewMode = 'month' | 'week' | 'day'
@@ -424,6 +471,21 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* 凡例 */}
+      {events.length > 0 && (
+        <div className="flex items-center gap-4 mb-3 flex-shrink-0">
+          {buildLegend(events).map(item => {
+            const color = getCalendarColor(item.calendarId)
+            return (
+              <div key={item.calendarId} className="flex items-center gap-1.5 text-xs text-gray-600">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${color.dot}`} />
+                {item.calendarName}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-gray-400">読み込み中...</div>
@@ -548,18 +610,23 @@ function MonthView({ currentDate, events, selectedDate, setSelectedDate, getEven
               }`}>
                 {format(day, 'd')}
               </span>
-              {dayEvents.slice(0, 3).map(e => (
-                <div
-                  key={e.id}
-                  onClick={(ev) => { ev.stopPropagation(); onEditEvent(e) }}
-                  className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 cursor-pointer ${
-                    isSelected ? 'bg-blue-500 text-white hover:bg-blue-400' : 'bg-green-100 text-green-700 hover:bg-green-200'
-                  }`}
-                >
-                  {e.allDay ? '' : format(parseISO(e.start), 'HH:mm') + ' '}
-                  {e.title}
-                </div>
-              ))}
+              {dayEvents.slice(0, 3).map(e => {
+                const color = getCalendarColor(e.calendarId, e.calendarName)
+                return (
+                  <div
+                    key={e.id}
+                    onClick={(ev) => { ev.stopPropagation(); onEditEvent(e) }}
+                    className={`text-xs truncate rounded px-1 py-0.5 mb-0.5 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-500 text-white hover:bg-blue-400'
+                        : `${color.allDayBg} ${color.allDayText} hover:opacity-80`
+                    }`}
+                  >
+                    {e.allDay ? '' : format(parseISO(e.start), 'HH:mm') + ' '}
+                    {e.title}
+                  </div>
+                )
+              })}
               {dayEvents.length > 3 && (
                 <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
                   +{dayEvents.length - 3}件
@@ -612,15 +679,18 @@ function WeekView({ weekDays, hours, getAllDayEvents, getTimedEventsForDay, onEd
           const allDayEvents = getAllDayEvents(day)
           return (
             <div key={day.toISOString()} className="flex-1 border-l border-gray-100 p-1 min-h-[30px]">
-              {allDayEvents.map(e => (
-                <button
-                  key={e.id}
-                  onClick={() => onEditEvent(e)}
-                  className="block w-full text-left text-xs bg-green-100 text-green-700 rounded px-1 py-0.5 truncate hover:bg-green-200"
-                >
-                  {e.title}
-                </button>
-              ))}
+              {allDayEvents.map(e => {
+                const color = getCalendarColor(e.calendarId, e.calendarName)
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => onEditEvent(e)}
+                    className={`block w-full text-left text-xs rounded px-1 py-0.5 truncate hover:opacity-80 ${color.allDayBg} ${color.allDayText}`}
+                  >
+                    {e.title}
+                  </button>
+                )
+              })}
             </div>
           )
         })}
@@ -655,11 +725,12 @@ function WeekView({ weekDays, hours, getAllDayEvents, getTimedEventsForDay, onEd
                 <div key={day.toISOString()} className="flex-1 relative border-l border-transparent">
                   {timedEvents.map((e, idx) => {
                     const { top, height } = calculateEventStyle(e, day)
+                    const color = getCalendarColor(e.calendarId, e.calendarName)
                     return (
                       <button
                         key={e.id}
                         onClick={() => onEditEvent(e)}
-                        className="absolute left-0.5 right-0.5 text-xs bg-green-500 text-white rounded px-1 py-0.5 overflow-hidden hover:bg-green-600 pointer-events-auto cursor-pointer shadow-sm"
+                        className={`absolute left-0.5 right-0.5 text-xs rounded px-1 py-0.5 overflow-hidden pointer-events-auto cursor-pointer shadow-sm ${color.bg} ${color.text} ${color.hover}`}
                         style={{
                           top: `${top}px`,
                           height: `${height}px`,
@@ -670,7 +741,7 @@ function WeekView({ weekDays, hours, getAllDayEvents, getTimedEventsForDay, onEd
                           {format(parseISO(e.start), 'HH:mm')} {e.title}
                         </div>
                         {height > 30 && (
-                          <div className="text-green-100 truncate text-[10px]">
+                          <div className="opacity-75 truncate text-[10px]">
                             {format(parseISO(e.start), 'HH:mm')} - {format(parseISO(e.end), 'HH:mm')}
                           </div>
                         )}
@@ -705,15 +776,18 @@ function DayView({ currentDate, hours, getAllDayEvents, getTimedEventsForDay, on
         <div className="flex border-b border-gray-200 flex-shrink-0 p-2">
           <div className="w-16 flex-shrink-0 text-xs text-gray-400">終日</div>
           <div className="flex-1 flex flex-wrap gap-1">
-            {allDayEvents.map(e => (
-              <button
-                key={e.id}
-                onClick={() => onEditEvent(e)}
-                className="text-xs bg-green-100 text-green-700 rounded px-2 py-1 hover:bg-green-200"
-              >
-                {e.title}
-              </button>
-            ))}
+            {allDayEvents.map(e => {
+              const color = getCalendarColor(e.calendarId, e.calendarName)
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => onEditEvent(e)}
+                  className={`text-xs rounded px-2 py-1 hover:opacity-80 ${color.allDayBg} ${color.allDayText}`}
+                >
+                  {e.title}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -737,11 +811,12 @@ function DayView({ currentDate, hours, getAllDayEvents, getTimedEventsForDay, on
             <div className="flex-1 relative">
               {timedEvents.map((e, idx) => {
                 const { top, height } = calculateEventStyle(e, currentDate)
+                const color = getCalendarColor(e.calendarId, e.calendarName)
                 return (
                   <button
                     key={e.id}
                     onClick={() => onEditEvent(e)}
-                    className="absolute left-1 right-1 text-sm bg-green-500 text-white rounded px-2 py-1 overflow-hidden hover:bg-green-600 pointer-events-auto cursor-pointer shadow-sm"
+                    className={`absolute left-1 right-1 text-sm rounded px-2 py-1 overflow-hidden pointer-events-auto cursor-pointer shadow-sm ${color.bg} ${color.text} ${color.hover}`}
                     style={{
                       top: `${top}px`,
                       height: `${height}px`,
@@ -753,10 +828,10 @@ function DayView({ currentDate, hours, getAllDayEvents, getTimedEventsForDay, on
                       <span className="ml-2">{e.title}</span>
                     </div>
                     {height > 40 && e.location && (
-                      <div className="text-green-100 text-xs mt-1">📍 {e.location}</div>
+                      <div className="opacity-75 text-xs mt-1">📍 {e.location}</div>
                     )}
                     {height > 60 && e.description && (
-                      <div className="text-green-100 text-xs mt-1 line-clamp-2">{e.description}</div>
+                      <div className="opacity-75 text-xs mt-1 line-clamp-2">{e.description}</div>
                     )}
                   </button>
                 )

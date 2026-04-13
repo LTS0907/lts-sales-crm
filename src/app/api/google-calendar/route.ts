@@ -15,6 +15,28 @@ import { getServerSession } from 'next-auth'
 import { google } from 'googleapis'
 import { authOptions } from '../auth/[...nextauth]/route'
 
+// カレンダーIDからわかりやすい表示名を生成
+function getCalendarName(calendarId: string): string {
+  if (calendarId === 'primary') return 'primary'
+  // メールアドレスの場合はローカル部分（@より前）を使用
+  const atIndex = calendarId.indexOf('@')
+  if (atIndex !== -1) {
+    return calendarId.substring(0, atIndex)
+  }
+  return calendarId
+}
+
+// 環境変数から追加カレンダーIDの一覧を取得
+function getCalendarIds(): string[] {
+  const ids: string[] = ['primary']
+  const extra = process.env.EXTRA_CALENDAR_IDS
+  if (extra) {
+    const extraIds = extra.split(',').map(id => id.trim()).filter(Boolean)
+    ids.push(...extraIds)
+  }
+  return ids
+}
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
 
@@ -32,28 +54,66 @@ export async function GET(request: Request) {
     oauth2Client.setCredentials({ access_token: session.accessToken })
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
+    const calendarIds = getCalendarIds()
 
-    const response = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: timeMin || new Date().toISOString(),
-      timeMax: timeMax || undefined,
-      singleEvents: true,
-      orderBy: 'startTime',
-      maxResults: 100,
+    // 全カレンダーを並列で取得。1つが失敗しても他は継続する
+    const results = await Promise.allSettled(
+      calendarIds.map(calendarId =>
+        calendar.events.list({
+          calendarId,
+          timeMin: timeMin || new Date().toISOString(),
+          timeMax: timeMax || undefined,
+          singleEvents: true,
+          orderBy: 'startTime',
+          maxResults: 100,
+        }).then(response => ({ calendarId, items: response.data.items || [] }))
+      )
+    )
+
+    const allEvents: {
+      id: string | null | undefined
+      title: string
+      start: string | undefined
+      end: string | undefined
+      location?: string | null
+      description?: string | null
+      htmlLink?: string | null
+      allDay: boolean
+      calendarId: string
+      calendarName: string
+    }[] = []
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { calendarId, items } = result.value
+        const calendarName = getCalendarName(calendarId)
+        for (const event of items) {
+          allEvents.push({
+            id: event.id,
+            title: event.summary || '(タイトルなし)',
+            start: event.start?.dateTime || event.start?.date || undefined,
+            end: event.end?.dateTime || event.end?.date || undefined,
+            location: event.location,
+            description: event.description,
+            htmlLink: event.htmlLink,
+            allDay: !event.start?.dateTime,
+            calendarId,
+            calendarName,
+          })
+        }
+      } else {
+        console.error('Failed to fetch calendar:', result.reason)
+      }
+    }
+
+    // 開始時刻で時系列順にソート
+    allEvents.sort((a, b) => {
+      const aTime = a.start ? new Date(a.start).getTime() : 0
+      const bTime = b.start ? new Date(b.start).getTime() : 0
+      return aTime - bTime
     })
 
-    const events = response.data.items?.map(event => ({
-      id: event.id,
-      title: event.summary || '(タイトルなし)',
-      start: event.start?.dateTime || event.start?.date,
-      end: event.end?.dateTime || event.end?.date,
-      location: event.location,
-      description: event.description,
-      htmlLink: event.htmlLink,
-      allDay: !event.start?.dateTime,
-    })) || []
-
-    return NextResponse.json(events)
+    return NextResponse.json(allEvents)
   } catch (error) {
     console.error('Google Calendar API error:', error)
     return NextResponse.json({ error: 'Failed to fetch calendar events' }, { status: 500 })
