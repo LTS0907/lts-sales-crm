@@ -9,6 +9,7 @@ import InvoiceModal from './InvoiceModal'
 import TaskModal from './TaskModal'
 import ContractSection from './ContractSection'
 import ContactSubscriptionSection from './ContactSubscriptionSection'
+import OwnerSelector from './OwnerSelector'
 import ContactReceivableSection from './ContactReceivableSection'
 
 interface GmailMessage {
@@ -397,7 +398,10 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
         <div className="flex-1">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{contact.name}</h1>
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-2xl font-bold text-gray-900">{contact.name}</h1>
+                <OwnerSelector contactId={contact.id} currentOwner={contact.owner || 'KAZUI'} />
+              </div>
               {contact.nameKana && <p className="text-xs text-gray-400">{contact.nameKana}</p>}
               {contact.title && <p className="text-sm text-gray-600">{contact.title}</p>}
               {contact.company && <p className="text-sm font-medium text-blue-600">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}

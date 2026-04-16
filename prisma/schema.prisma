@@ -43,6 +43,8 @@ model Contact {
   serviceReason       String?
   touchNumber         Int                  @default(0)
   driveFolderId       String?
+  // 担当者: "KAZUI"（龍竹）| "KABASHIMA"（樺嶋）| "SHARED"（共同）
+  owner               String               @default("KAZUI")
   Exchange            Exchange[]
   FollowUpLog         FollowUpLog[]
   GroupMember         GroupMember[]

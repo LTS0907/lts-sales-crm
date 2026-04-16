@@ -32,6 +32,7 @@ export default function ContactForm({ initialData, mode }: {
     address: initialData?.address || '',
     connectionType: initialData?.connectionType || '',
     episodeMemo: initialData?.episodeMemo || '',
+    owner: initialData?.owner || 'KAZUI',
   })
 
   const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +132,31 @@ export default function ContactForm({ initialData, mode }: {
                   onChange={e => setForm(f => ({ ...f, [key as string]: e.target.value }))}
                   className={INPUT} />
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 担当者 */}
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">担当者</h3>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {[
+              { value: 'KAZUI',     label: '👤 龍竹（かずい）', activeClass: 'bg-blue-600 text-white border-blue-600' },
+              { value: 'KABASHIMA', label: '🌙 樺嶋',          activeClass: 'bg-purple-600 text-white border-purple-600' },
+              { value: 'SHARED',    label: '🤝 共同',          activeClass: 'bg-green-600 text-white border-green-600' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, owner: opt.value }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  form.owner === opt.value
+                    ? opt.activeClass
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>
