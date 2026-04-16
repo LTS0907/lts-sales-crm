@@ -43,6 +43,8 @@ model Contact {
   serviceReason       String?
   touchNumber         Int                  @default(0)
   driveFolderId       String?
+  // 担当者: "KAZUI"（龍竹）| "KABASHIMA"（樺嶋）| "SHARED"（共同）
+  owner               String               @default("KAZUI")
   Exchange            Exchange[]
   FollowUpLog         FollowUpLog[]
   GroupMember         GroupMember[]
@@ -101,9 +103,27 @@ model Meeting {
   createdAt          DateTime             @default(now())
   title              String?
   date               DateTime
+  duration           Int?                 // 分単位
   location           String?
   notes              String?
+  // Google Calendar / Meet 連携
+  googleEventId      String?              @unique
+  meetUrl            String?
+  calendarId         String?
+  htmlLink           String?              // Calendar上のイベントURL
+  // 議事録同期
+  transcriptDriveId  String?              // Meet議事録ファイルのDrive ID
+  recordingDriveId   String?              // Meet録画ファイルのDrive ID
+  summary            String?              // AI生成の要約
+  summaryAt          DateTime?            // 要約生成日時
+  syncedAt           DateTime?            // 議事録同期日時
+  status             String               @default("SCHEDULED") // SCHEDULED / COMPLETED / CANCELLED
+  owner              String               @default("KAZUI")     // 作成者 (KAZUI/KABASHIMA/SHARED)
   MeetingParticipant MeetingParticipant[]
+
+  @@index([date])
+  @@index([googleEventId])
+  @@index([syncedAt])
 }
 
 model MeetingParticipant {

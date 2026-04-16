@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import OwnerBadge, { type Owner } from './OwnerBadge'
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   UNSENT:  { label: '未送信', color: 'bg-gray-100 text-gray-600' },
@@ -89,16 +90,30 @@ function getScrollContainer(): Element | null {
   return document.querySelector('main')
 }
 
+type OwnerFilter = 'ALL' | Owner
+
 export default function ContactsClient({ contacts }: { contacts: any[] }) {
   const [mode, setMode] = useState<GroupMode>('company')
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('ALL')
 
-  const groups = groupContacts(contacts, mode)
+  const filteredContacts = ownerFilter === 'ALL'
+    ? contacts
+    : contacts.filter(c => (c.owner || 'KAZUI') === ownerFilter)
+
+  const groups = groupContacts(filteredContacts, mode)
 
   const modes: { key: GroupMode; label: string }[] = [
     { key: 'company',    label: '会社別' },
     { key: 'prefecture', label: '都道府県別' },
     { key: 'service',    label: 'サービス別' },
     { key: 'connection', label: 'つながり別' },
+  ]
+
+  const ownerFilters: { key: OwnerFilter; label: string; activeClass: string }[] = [
+    { key: 'ALL',       label: '全員',       activeClass: 'bg-gray-700 text-white' },
+    { key: 'KAZUI',     label: '👤 龍竹',    activeClass: 'bg-blue-600 text-white' },
+    { key: 'KABASHIMA', label: '🌙 樺嶋',    activeClass: 'bg-purple-600 text-white' },
+    { key: 'SHARED',    label: '🤝 共同',    activeClass: 'bg-green-600 text-white' },
   ]
 
   // Restore scroll position on mount
@@ -130,6 +145,26 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
 
   return (
     <>
+      {/* 担当者フィルター */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {ownerFilters.map(f => {
+          const count = f.key === 'ALL' ? contacts.length : contacts.filter(c => (c.owner || 'KAZUI') === f.key).length
+          return (
+            <button
+              key={f.key}
+              onClick={() => setOwnerFilter(f.key)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                ownerFilter === f.key
+                  ? f.activeClass + ' border-transparent'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              {f.label} <span className="opacity-75">({count})</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Group mode selector */}
       <div className="flex gap-2 mb-5 flex-wrap">
         {modes.map(m => (
@@ -145,7 +180,7 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
             {m.label}
           </button>
         ))}
-        <span className="ml-auto text-sm text-gray-400 self-center">合計 {contacts.length}名</span>
+        <span className="ml-auto text-sm text-gray-400 self-center">表示中 {filteredContacts.length} / 合計 {contacts.length}名</span>
       </div>
 
       {/* Groups */}
@@ -187,6 +222,7 @@ function ContactCard({ contact }: { contact: any }) {
             </div>
             {contact.title && <p className="text-xs text-gray-500 truncate">{contact.title}</p>}
             {contact.company && <p className="text-xs text-blue-600 truncate">{contact.company}</p>}
+            <div className="mt-1"><OwnerBadge owner={contact.owner} size="xs" /></div>
           </div>
         </div>
         {contact.recommendedServices && (

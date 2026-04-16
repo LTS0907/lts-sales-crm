@@ -6,6 +6,7 @@ import { getPhasesForService } from '@/lib/service-phases'
 import { refreshOverdueStatus } from '@/lib/accounts-receivable'
 import RevenueByYearTable from '@/components/revenue/RevenueByYearTable'
 import ReconciliationSection from '@/components/payments/ReconciliationSection'
+import GoogleTasksWidget from '@/components/tasks/GoogleTasksWidget'
 import { normalizePayerName, matchPaymentToAR, type MatchableAR } from '@/lib/payment-matching'
 
 const SERVICES = [
@@ -112,6 +113,9 @@ export default async function Dashboard() {
 
   return (
     <div className="p-6">
+      {/* ⭐ Googleタスク ウィジェット */}
+      <GoogleTasksWidget />
+
       {/* アラートセクション（常に表示） */}
       <div className="mb-8">
           <h2 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
