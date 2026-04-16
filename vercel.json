@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/cron/sync-meet-recordings/route.ts": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/backup/run",
@@ -8,6 +13,10 @@
     {
       "path": "/api/backup/drill",
       "schedule": "0 18 1 * *"
+    },
+    {
+      "path": "/api/cron/sync-meet-recordings",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

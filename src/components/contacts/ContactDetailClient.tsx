@@ -10,6 +10,7 @@ import TaskModal from './TaskModal'
 import ContractSection from './ContractSection'
 import ContactSubscriptionSection from './ContactSubscriptionSection'
 import OwnerSelector from './OwnerSelector'
+import ScheduleMeetingModal from '../meetings/ScheduleMeetingModal'
 import ContactReceivableSection from './ContactReceivableSection'
 
 interface GmailMessage {
@@ -128,6 +129,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   )
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
 
   const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -407,6 +409,12 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
               {contact.company && <p className="text-sm font-medium text-blue-600">{contact.department ? `${contact.department} / ` : ''}{contact.company}</p>}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => setScheduleModalOpen(true)}
+                className="px-3 py-1 text-xs border border-green-200 text-green-700 rounded-lg hover:bg-green-50"
+              >
+                📅 Meet発行
+              </button>
               <button
                 onClick={() => setTaskModalOpen(true)}
                 className="px-3 py-1 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50"
@@ -1017,6 +1025,19 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           </div>
         </div>
       )}
+
+      {/* Schedule Meeting Modal */}
+      <ScheduleMeetingModal
+        open={scheduleModalOpen}
+        onClose={() => setScheduleModalOpen(false)}
+        contact={{
+          id: contact.id,
+          name: contact.name,
+          email: contact.email,
+          company: contact.company,
+          owner: contact.owner,
+        }}
+      />
 
       {/* Task Modal */}
       <TaskModal
