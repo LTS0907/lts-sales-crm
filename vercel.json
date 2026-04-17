@@ -16,7 +16,7 @@
     },
     {
       "path": "/api/cron/sync-meet-recordings",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 22 * * *"
     }
   ]
 }
