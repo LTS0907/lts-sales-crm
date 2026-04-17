@@ -49,6 +49,27 @@ const CALENDAR_COLORS: Record<string, { bg: string; text: string; allDayBg: stri
     hover: 'hover:bg-blue-600',
     dot: 'bg-blue-500',
   },
+  // 樺嶋のカレンダーは黄色（OwnerBadge の KABASHIMA と統一）
+  'r.kabashima@life-time-support.com': {
+    bg: 'bg-yellow-500',
+    text: 'text-white',
+    allDayBg: 'bg-yellow-100',
+    allDayText: 'text-yellow-700',
+    hover: 'hover:bg-yellow-600',
+    dot: 'bg-yellow-500',
+  },
+}
+
+// カレンダーIDから表示名を返すマッピング（凡例などで使用）
+const CALENDAR_DISPLAY_NAMES: Record<string, string> = {
+  primary: 'マイカレンダー',
+  'r.kabashima@life-time-support.com': '樺嶋',
+  'ryouchiku@life-time-support.com': '龍竹',
+}
+
+function getCalendarDisplayName(calendarId: string, fallback?: string): string {
+  if (CALENDAR_DISPLAY_NAMES[calendarId]) return CALENDAR_DISPLAY_NAMES[calendarId]
+  return fallback || calendarId
 }
 
 // メールアドレスのローカル部分（@より前）でも引けるようにするルックアップ
@@ -73,12 +94,15 @@ function buildLegend(events: GoogleEvent[]) {
   const seen = new Set<string>()
   const legend: { calendarId: string; calendarName: string }[] = []
   // primary は必ず先頭
-  legend.push({ calendarId: 'primary', calendarName: 'マイカレンダー' })
+  legend.push({ calendarId: 'primary', calendarName: getCalendarDisplayName('primary') })
   seen.add('primary')
   for (const e of events) {
     if (e.calendarId && e.calendarId !== 'primary' && !seen.has(e.calendarId)) {
       seen.add(e.calendarId)
-      legend.push({ calendarId: e.calendarId, calendarName: e.calendarName || e.calendarId })
+      legend.push({
+        calendarId: e.calendarId,
+        calendarName: getCalendarDisplayName(e.calendarId, e.calendarName),
+      })
     }
   }
   return legend

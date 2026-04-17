@@ -142,7 +142,7 @@ export default function ContactForm({ initialData, mode }: {
           <div className="flex flex-wrap gap-2 mb-3">
             {[
               { value: 'KAZUI',     label: '👤 龍竹（かずい）', activeClass: 'bg-blue-600 text-white border-blue-600' },
-              { value: 'KABASHIMA', label: '🌙 樺嶋',          activeClass: 'bg-purple-600 text-white border-purple-600' },
+              { value: 'KABASHIMA', label: '🌙 樺嶋',          activeClass: 'bg-yellow-500 text-white border-yellow-500' },
               { value: 'SHARED',    label: '🤝 共同',          activeClass: 'bg-green-600 text-white border-green-600' },
             ].map(opt => (
               <button

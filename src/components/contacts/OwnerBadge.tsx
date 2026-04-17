@@ -2,7 +2,7 @@
  * OwnerBadge — 顧客の担当者を視覚的に表示するバッジ
  *
  * KAZUI    = 龍竹 (青)
- * KABASHIMA = 樺嶋 (紫)
+ * KABASHIMA = 樺嶋 (黄)
  * SHARED   = 共同 (緑)
  */
 
@@ -27,9 +27,9 @@ export const OWNER_CONFIG: Record<Owner, {
   KABASHIMA: {
     label: '樺嶋',
     shortLabel: '樺嶋',
-    color: 'text-purple-700',
-    bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-300',
+    color: 'text-yellow-700',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-300',
     icon: '🌙',
   },
   SHARED: {

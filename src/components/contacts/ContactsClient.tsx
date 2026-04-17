@@ -112,7 +112,7 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
   const ownerFilters: { key: OwnerFilter; label: string; activeClass: string }[] = [
     { key: 'ALL',       label: '全員',       activeClass: 'bg-gray-700 text-white' },
     { key: 'KAZUI',     label: '👤 龍竹',    activeClass: 'bg-blue-600 text-white' },
-    { key: 'KABASHIMA', label: '🌙 樺嶋',    activeClass: 'bg-purple-600 text-white' },
+    { key: 'KABASHIMA', label: '🌙 樺嶋',    activeClass: 'bg-yellow-500 text-white' },
     { key: 'SHARED',    label: '🤝 共同',    activeClass: 'bg-green-600 text-white' },
   ]
 

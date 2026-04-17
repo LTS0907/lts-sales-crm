@@ -15,9 +15,16 @@ import { getServerSession } from 'next-auth'
 import { google } from 'googleapis'
 import { authOptions } from '../auth/[...nextauth]/route'
 
+// カレンダーID → 表示名のマッピング（既知ユーザー）
+const CALENDAR_NAME_MAP: Record<string, string> = {
+  'r.kabashima@life-time-support.com': '樺嶋',
+  'ryouchiku@life-time-support.com': '龍竹',
+}
+
 // カレンダーIDからわかりやすい表示名を生成
 function getCalendarName(calendarId: string): string {
   if (calendarId === 'primary') return 'primary'
+  if (CALENDAR_NAME_MAP[calendarId]) return CALENDAR_NAME_MAP[calendarId]
   // メールアドレスの場合はローカル部分（@より前）を使用
   const atIndex = calendarId.indexOf('@')
   if (atIndex !== -1) {
