@@ -40,24 +40,28 @@ interface GoogleEvent {
 }
 
 // カレンダーIDに対応する色設定
+// 龍竹（ryouchiku）: 青、樺嶋（r.kabashima）: 黄（OwnerBadge と統一）
+// "primary" は API が session.user.email でタグするため通常到達しないが、フォールバックとして残す
+const BLUE_COLOR = {
+  bg: 'bg-blue-500',
+  text: 'text-white',
+  allDayBg: 'bg-blue-100',
+  allDayText: 'text-blue-700',
+  hover: 'hover:bg-blue-600',
+  dot: 'bg-blue-500',
+}
+const YELLOW_COLOR = {
+  bg: 'bg-yellow-500',
+  text: 'text-white',
+  allDayBg: 'bg-yellow-100',
+  allDayText: 'text-yellow-700',
+  hover: 'hover:bg-yellow-600',
+  dot: 'bg-yellow-500',
+}
 const CALENDAR_COLORS: Record<string, { bg: string; text: string; allDayBg: string; allDayText: string; hover: string; dot: string }> = {
-  primary: {
-    bg: 'bg-blue-500',
-    text: 'text-white',
-    allDayBg: 'bg-blue-100',
-    allDayText: 'text-blue-700',
-    hover: 'hover:bg-blue-600',
-    dot: 'bg-blue-500',
-  },
-  // 樺嶋のカレンダーは黄色（OwnerBadge の KABASHIMA と統一）
-  'r.kabashima@life-time-support.com': {
-    bg: 'bg-yellow-500',
-    text: 'text-white',
-    allDayBg: 'bg-yellow-100',
-    allDayText: 'text-yellow-700',
-    hover: 'hover:bg-yellow-600',
-    dot: 'bg-yellow-500',
-  },
+  primary: BLUE_COLOR,
+  'ryouchiku@life-time-support.com': BLUE_COLOR,
+  'r.kabashima@life-time-support.com': YELLOW_COLOR,
 }
 
 // カレンダーIDから表示名を返すマッピング（凡例などで使用）

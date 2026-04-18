@@ -33,12 +33,21 @@ function getCalendarName(calendarId: string): string {
   return calendarId
 }
 
-// 環境変数から追加カレンダーIDの一覧を取得
-function getCalendarIds(): string[] {
-  const ids: string[] = ['primary']
+// 取得対象のカレンダーID一覧を返す。
+//   先頭はログインユーザー自身のメール（=自分の予定）。
+//   続いて EXTRA_CALENDAR_IDS から自分のメールを除外した他者のカレンダーを並べる。
+// これにより、誰がログインしても自分＋他者の全員の予定が（カレンダーID=メール単位で）取得でき、
+// フロント側の色マッピングもメールアドレスをキーに統一できる。
+function getCalendarIds(userEmail: string | undefined | null): string[] {
+  const selfId = userEmail || 'primary'
+  const ids: string[] = [selfId]
   const extra = process.env.EXTRA_CALENDAR_IDS
   if (extra) {
-    const extraIds = extra.split(',').map(id => id.trim()).filter(Boolean)
+    const extraIds = extra
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean)
+      .filter(id => id !== userEmail) // 自分自身のメールは重複するので除外
     ids.push(...extraIds)
   }
   return ids
@@ -61,7 +70,7 @@ export async function GET(request: Request) {
     oauth2Client.setCredentials({ access_token: session.accessToken })
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
-    const calendarIds = getCalendarIds()
+    const calendarIds = getCalendarIds(session.user?.email)
 
     // 全カレンダーを並列で取得。1つが失敗しても他は継続する
     const results = await Promise.allSettled(

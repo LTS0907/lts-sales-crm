@@ -34,6 +34,8 @@ yarn-error.log*
 .env*
 !.env.example
 .vercel-env*
+# "env" (ドットなし) はルート直下に置かれた秘密情報ファイルと見做して除外
+/env
 /tmp/
 
 # SQLite

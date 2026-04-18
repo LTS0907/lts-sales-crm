@@ -44,6 +44,8 @@ export default function GoogleTasksWidget() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(true)
+  // 「その他のタスク」は通常時は折りたたみ、見たい時だけ展開する
+  const [otherExpanded, setOtherExpanded] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -162,29 +164,37 @@ export default function GoogleTasksWidget() {
             </div>
           )}
 
-          {/* CRM優先タスク */}
+          {/* CRM優先タスク（グリッド表示） */}
           {sortedCrm.length > 0 && (
             <div className="bg-gradient-to-r from-yellow-50/30 to-transparent">
               <div className="px-5 py-2 text-xs font-bold text-orange-700 bg-yellow-50/50 border-b border-yellow-100">
                 ⭐ 優先度の高いタスク (CRM)
               </div>
-              {sortedCrm.map(task => (
-                <TaskRow key={task.id} task={task} onToggle={toggleComplete} priority />
-              ))}
+              <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                {sortedCrm.map(task => (
+                  <TaskCard key={task.id} task={task} onToggle={toggleComplete} priority />
+                ))}
+              </div>
             </div>
           )}
 
-          {/* その他のタスク */}
+          {/* その他のタスク（折りたたみ可能、デフォルト非表示） */}
           {sortedOther.length > 0 && (
             <>
-              {sortedCrm.length > 0 && (
-                <div className="px-5 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-100">
-                  📋 その他のタスク
+              <button
+                onClick={() => setOtherExpanded(!otherExpanded)}
+                className="w-full px-5 py-2 text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 border-b border-gray-100 flex items-center justify-between transition-colors"
+              >
+                <span>📋 その他のタスク ({sortedOther.length}件)</span>
+                <span className="text-gray-400">{otherExpanded ? '▼' : '▶'}</span>
+              </button>
+              {otherExpanded && (
+                <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                  {sortedOther.map(task => (
+                    <TaskCard key={task.id} task={task} onToggle={toggleComplete} />
+                  ))}
                 </div>
               )}
-              {sortedOther.map(task => (
-                <TaskRow key={task.id} task={task} onToggle={toggleComplete} />
-              ))}
             </>
           )}
         </div>
@@ -193,7 +203,8 @@ export default function GoogleTasksWidget() {
   )
 }
 
-function TaskRow({
+// グリッド用のコンパクトなカード。1行に3〜4個並ぶ想定で、タイトルと期日に集中する。
+function TaskCard({
   task,
   onToggle,
   priority = false,
@@ -203,34 +214,29 @@ function TaskRow({
   priority?: boolean
 }) {
   const due = dueLabel(task.due)
+  const borderColor = priority ? 'border-orange-200' : 'border-gray-200'
+  const bgColor = priority ? 'bg-white hover:bg-orange-50' : 'bg-white hover:bg-gray-50'
   return (
-    <div className="px-5 py-2.5 flex items-start gap-3 hover:bg-gray-50 transition-colors">
+    <div
+      className={`flex items-start gap-2 p-2 rounded-lg border ${borderColor} ${bgColor} transition-colors`}
+      title={task.title}
+    >
       <input
         type="checkbox"
         checked={task.status === 'completed'}
         onChange={() => onToggle(task)}
-        className={`mt-1 flex-shrink-0 ${priority ? 'accent-orange-500' : ''}`}
+        className={`mt-0.5 flex-shrink-0 ${priority ? 'accent-orange-500' : ''}`}
       />
       <div className="flex-1 min-w-0">
-        <div className={`text-sm ${priority ? 'font-semibold text-gray-900' : 'text-gray-700'} truncate`}>
+        <div className={`text-xs leading-tight ${priority ? 'font-semibold text-gray-900' : 'text-gray-700'} line-clamp-2`}>
           {task.title || '(タイトルなし)'}
         </div>
-        {task.notes && (
-          <div className="text-xs text-gray-500 mt-0.5 truncate">{task.notes}</div>
+        {due.label && (
+          <div className={`text-[10px] mt-1 ${due.color}`}>{due.label}</div>
         )}
-        <div className="flex items-center gap-2 mt-1">
-          {due.label && <span className={`text-xs ${due.color}`}>{due.label}</span>}
-          {priority && (
-            <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full">
-              ⭐ CRM
-            </span>
-          )}
-          {!priority && (
-            <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-              📋 {task.taskListTitle}
-            </span>
-          )}
-        </div>
+        {!priority && !due.label && (
+          <div className="text-[10px] mt-1 text-gray-400 truncate">{task.taskListTitle}</div>
+        )}
       </div>
     </div>
   )
