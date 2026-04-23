@@ -16,10 +16,12 @@
  *   4. emailStatus=SENT / emailSentAt=now に更新
  *   5. FollowUpLog を追加 (touchNumber=現在+1, status=SENT)
  *   6. touchNumber をインクリメント
+ *   7. セミナースプシ該当行の B列背景を緑、J列に送信済スタンプ
  */
 import { PrismaClient } from '@prisma/client'
 import { google } from 'googleapis'
 import crypto from 'crypto'
+import { markSheetSent } from './mark-sheet-sent.mjs'
 
 const KEY_FILE = '/Users/apple/.config/gws/service-account.json'
 const FROM_NAME = '龍竹一生'
@@ -132,6 +134,18 @@ async function main() {
 
   console.log(`[db] emailStatus=SENT / emailSentAt=${now.toISOString()} / touchNumber=${newTouch}`)
   console.log(`[db] FollowUpLog を追加`)
+
+  // セミナースプシに送信済みマーク（該当行があれば）
+  try {
+    const sheetRes = await markSheetSent({ email: contact.email, sentAt: now })
+    if (sheetRes.matched) {
+      console.log(`[sheet] 行${sheetRes.rowIndex} (${sheetRes.company} / ${sheetRes.name}) を緑でマーク`)
+    } else {
+      console.log(`[sheet] スキップ: ${sheetRes.message}`)
+    }
+  } catch (e) {
+    console.warn(`[sheet] 更新失敗（送信自体は成功）: ${e.message}`)
+  }
 
   await prisma.$disconnect()
 }
