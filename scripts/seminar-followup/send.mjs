@@ -29,16 +29,19 @@ const FROM_EMAIL = 'ryouchiku@life-time-support.com'
 
 const prisma = new PrismaClient()
 
-function encodeSubject(subject) {
-  // RFC 2047 MIME encoded-word for UTF-8 subject
-  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`
+// RFC 2047 MIME encoded-word: 非ASCII を含むヘッダ値を UTF-8 Base64 で安全に運ぶ
+function encodeHeader(value) {
+  // eslint-disable-next-line no-control-regex
+  const isAscii = /^[\x00-\x7F]*$/.test(value)
+  if (isAscii) return value
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
 }
 
 function buildMimeMessage({ to, from, fromName, subject, body }) {
   const headers = [
-    `From: ${fromName} <${from}>`,
+    `From: ${encodeHeader(fromName)} <${from}>`,
     `To: ${to}`,
-    `Subject: ${encodeSubject(subject)}`,
+    `Subject: ${encodeHeader(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
