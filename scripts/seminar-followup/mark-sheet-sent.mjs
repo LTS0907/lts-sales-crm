@@ -48,37 +48,44 @@ export async function markSheetSent({ email, sentAt }) {
     range: `'${TAB_NAME}'!A1:I250`,
   })
   const rows = read.data.values || []
-  let rowIndex = -1
+  const matched = []
   for (let i = 1; i < rows.length; i++) {
-    if ((rows[i][8] || '').trim().toLowerCase() === email.trim().toLowerCase()) {
-      rowIndex = i + 1
-      break
+    // 正規化: "ooba@smile-reform.com=XLOOKUP(...)" のような式混入を除去
+    const raw = (rows[i][8] || '').trim()
+    const normalized = raw.split(/[=\s]/)[0].toLowerCase()
+    if (normalized === email.trim().toLowerCase()) {
+      matched.push({
+        rowIndex: i + 1,
+        company: rows[i][1],
+        name: rows[i][3],
+      })
     }
   }
-  if (rowIndex < 0) {
+  if (matched.length === 0) {
     return { matched: false, message: `${email} が ${TAB_NAME} に見つかりません` }
   }
 
-  const requests = [
-    {
+  const requests = []
+  for (const m of matched) {
+    requests.push({
       repeatCell: {
         range: {
           sheetId: TAB_GID,
-          startRowIndex: rowIndex - 1,
-          endRowIndex: rowIndex,
+          startRowIndex: m.rowIndex - 1,
+          endRowIndex: m.rowIndex,
           startColumnIndex: 1,
           endColumnIndex: 2,
         },
         cell: { userEnteredFormat: { backgroundColor: LIGHT_GREEN } },
         fields: 'userEnteredFormat.backgroundColor',
       },
-    },
-    {
+    })
+    requests.push({
       updateCells: {
         range: {
           sheetId: TAB_GID,
-          startRowIndex: rowIndex - 1,
-          endRowIndex: rowIndex,
+          startRowIndex: m.rowIndex - 1,
+          endRowIndex: m.rowIndex,
           startColumnIndex: 9,
           endColumnIndex: 10,
         },
@@ -90,8 +97,8 @@ export async function markSheetSent({ email, sentAt }) {
         }],
         fields: 'userEnteredValue,userEnteredFormat.backgroundColor',
       },
-    },
-  ]
+    })
+  }
 
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: SHEET_ID,
@@ -100,9 +107,7 @@ export async function markSheetSent({ email, sentAt }) {
 
   return {
     matched: true,
-    rowIndex,
-    company: rows[rowIndex - 1][1],
-    name: rows[rowIndex - 1][3],
+    rows: matched,
     stamp,
   }
 }
@@ -120,6 +125,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error(result.message)
     process.exit(1)
   }
-  console.log(`[match] 行${result.rowIndex} (${result.company} / ${result.name})`)
+  for (const r of result.rows) {
+    console.log(`[match] 行${r.rowIndex} (${r.company} / ${r.name})`)
+  }
   console.log(`[update] ${result.stamp}`)
 }

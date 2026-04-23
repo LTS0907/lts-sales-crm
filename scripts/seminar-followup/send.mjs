@@ -138,11 +138,13 @@ async function main() {
   console.log(`[db] emailStatus=SENT / emailSentAt=${now.toISOString()} / touchNumber=${newTouch}`)
   console.log(`[db] FollowUpLog を追加`)
 
-  // セミナースプシに送信済みマーク（該当行があれば）
+  // セミナースプシに送信済みマーク（該当行すべて）
   try {
     const sheetRes = await markSheetSent({ email: contact.email, sentAt: now })
     if (sheetRes.matched) {
-      console.log(`[sheet] 行${sheetRes.rowIndex} (${sheetRes.company} / ${sheetRes.name}) を緑でマーク`)
+      for (const r of sheetRes.rows) {
+        console.log(`[sheet] 行${r.rowIndex} (${r.company} / ${r.name}) を緑でマーク`)
+      }
     } else {
       console.log(`[sheet] スキップ: ${sheetRes.message}`)
     }
