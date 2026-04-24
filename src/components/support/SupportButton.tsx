@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
 type SendResult = { recipient: string; success: boolean; error?: string }
@@ -15,6 +15,7 @@ export default function SupportButton() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!screenshot) {
@@ -73,7 +74,7 @@ export default function SupportButton() {
     setPasteError(null)
     try {
       if (!navigator.clipboard || !navigator.clipboard.read) {
-        setPasteError('このブラウザでは貼り付けボタンが使えません。入力欄で Cmd+V（Windows: Ctrl+V）を押してください')
+        setPasteError('このブラウザでは貼り付けボタンが使えないの…下の「📁 ファイルを選ぶ」ボタンか、メッセージ欄で Cmd+V を試してね')
         return
       }
       const items = await navigator.clipboard.read()
@@ -87,14 +88,25 @@ export default function SupportButton() {
           return
         }
       }
-      setPasteError('クリップボードに画像が見つかりません。先にスクショを撮ってください（Mac: Ctrl+Shift+Cmd+4 / Win: Win+Shift+S）')
+      setPasteError('クリップボードに画像がないみたい。先にスクショを撮ってね（Mac: Ctrl+Shift+Cmd+4 / Win: Win+Shift+S）。撮れない時は下のファイル選択でもOK！')
     } catch (e) {
       setPasteError(
         e instanceof Error
-          ? `貼り付け失敗: ${e.message}（入力欄で Cmd+V / Ctrl+V を試してください）`
-          : '貼り付け失敗'
+          ? `貼り付けできなかった: ${e.message}。下の「📁 ファイルを選ぶ」ボタンで代わりに添付してね`
+          : '貼り付けできなかった。ファイル選択を使ってね'
       )
     }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setPasteError('画像ファイルを選んでね')
+      return
+    }
+    setScreenshot(file)
+    setPasteError(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,14 +124,20 @@ export default function SupportButton() {
       if (screenshot) fd.append('screenshot', screenshot)
 
       const res = await fetch('/api/support/send', { method: 'POST', body: fd })
-      const data = (await res.json()) as { results?: SendResult[]; error?: string }
-      if (!res.ok && res.status !== 207) {
-        setError(data.error || `送信失敗 (${res.status})`)
+      const data = (await res.json()) as {
+        results?: SendResult[]
+        error?: string
+        summary?: { anyFailed: boolean; allFailed: boolean; recipientCount: number }
+      }
+      const results = data.results || []
+      const failed = results.filter(r => !r.success)
+      if (failed.length === results.length && results.length > 0) {
+        const firstErr = failed[0]?.error || data.error || `HTTP ${res.status}`
+        setError(`送信できなかった: ${firstErr}`)
         return
       }
-      const failed = (data.results || []).filter(r => !r.success)
-      if (failed.length === (data.results || []).length && (data.results || []).length > 0) {
-        setError(`送信失敗: ${failed[0]?.error || 'unknown'}`)
+      if (!res.ok && res.status !== 207) {
+        setError(data.error || `送信失敗 (${res.status})`)
         return
       }
       setDone(true)
@@ -215,14 +233,31 @@ export default function SupportButton() {
                       <br />
                       2️⃣ 下のボタンか、メッセージ欄で <code className="bg-gray-100 px-1 rounded">Cmd/Ctrl+V</code> を押して貼り付け
                     </p>
-                    <button
-                      type="button"
-                      onClick={handlePasteClick}
-                      disabled={sending}
-                      className="w-full py-2 border border-dashed border-gray-300 hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
-                    >
-                      📋 クリップボードから貼り付け
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePasteClick}
+                        disabled={sending}
+                        className="py-2 border border-dashed border-gray-300 hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
+                      >
+                        📋 貼り付け
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={sending}
+                        className="py-2 border border-dashed border-gray-300 hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
+                      >
+                        📁 ファイルを選ぶ
+                      </button>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
                     {pasteError && (
                       <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg p-2">
                         {pasteError}

@@ -76,12 +76,19 @@ export async function POST(request: NextRequest) {
           text,
           attachment,
         })
+        if (!r.success) {
+          console.error(`[support/send] ${recipient} failed:`, r.error)
+        }
         return { recipient, success: r.success, error: r.error }
       })
     )
 
     const anyFailed = results.some(r => !r.success)
-    return NextResponse.json({ results }, { status: anyFailed ? 207 : 200 })
+    const allFailed = results.every(r => !r.success)
+    return NextResponse.json(
+      { results, summary: { anyFailed, allFailed, recipientCount: results.length } },
+      { status: allFailed ? 500 : anyFailed ? 207 : 200 }
+    )
   } catch (err: unknown) {
     console.error('[support/send] Error:', err)
     const msg = err instanceof Error ? err.message : 'Unknown error'
