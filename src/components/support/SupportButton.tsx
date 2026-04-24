@@ -1,369 +1,274 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { useEffect, useRef, useState } from 'react'
 
-type SendResult = { recipient: string; success: boolean; error?: string }
+type SendState = 'idle' | 'sending' | 'success' | 'error'
 
 export default function SupportButton() {
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const [open, setOpen] = useState(false)
-  const [message, setMessage] = useState('')
-  const [screenshot, setScreenshot] = useState<File | null>(null)
-  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null)
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
-  const [pasteError, setPasteError] = useState<string | null>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [text, setText] = useState('')
+  const [screenshot, setScreenshot] = useState<Blob | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [sendState, setSendState] = useState<SendState>('idle')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [capturing, setCapturing] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (!screenshot) {
-      setScreenshotPreview(null)
+      setPreviewUrl(null)
       return
     }
     const url = URL.createObjectURL(screenshot)
-    setScreenshotPreview(url)
+    setPreviewUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [screenshot])
 
-  // モーダル内で Ctrl/Cmd+V を受けてスクショを取り込む
   useEffect(() => {
-    if (!open) return
-    const pasteHandler = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items
-      if (!items) return
-      for (const item of Array.from(items)) {
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (file) {
-            setScreenshot(file)
-            setPasteError(null)
-            e.preventDefault()
-            return
-          }
-        }
-      }
-    }
-    // モーダル外への誤ドロップでブラウザが画像を開いてしまうのを防ぐ
-    const prevent = (e: DragEvent) => e.preventDefault()
-    window.addEventListener('paste', pasteHandler)
-    window.addEventListener('dragover', prevent)
-    window.addEventListener('drop', prevent)
-    return () => {
-      window.removeEventListener('paste', pasteHandler)
-      window.removeEventListener('dragover', prevent)
-      window.removeEventListener('drop', prevent)
+    if (open) {
+      setTimeout(() => textareaRef.current?.focus(), 50)
     }
   }, [open])
 
-  if (status !== 'authenticated' || !session?.user?.email) return null
+  if (status !== 'authenticated') return null
 
-  const resetForm = () => {
-    setMessage('')
+  const reset = () => {
+    setText('')
     setScreenshot(null)
-    setError(null)
-    setDone(false)
-    setPasteError(null)
+    setSendState('idle')
+    setErrorMsg(null)
   }
 
-  const handleOpen = () => {
-    resetForm()
-    setOpen(true)
-  }
-
-  const handleClose = () => {
-    if (sending) return
+  const close = () => {
+    if (sendState === 'sending') return
     setOpen(false)
-    resetForm()
+    setTimeout(reset, 300)
   }
 
-  const handlePasteClick = async () => {
-    setPasteError(null)
+  async function captureScreenshot() {
+    setErrorMsg(null)
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getDisplayMedia
+    ) {
+      setErrorMsg(
+        'このブラウザは画面キャプチャに対応していないの。お手数だけど、別途スクショを撮ってドラッグ&ドロップしてね。'
+      )
+      return
+    }
+    setCapturing(true)
+    let stream: MediaStream | null = null
     try {
-      if (!navigator.clipboard || !navigator.clipboard.read) {
-        setPasteError('このブラウザでは貼り付けボタンが使えないの…下の「📁 ファイルを選ぶ」ボタンか、メッセージ欄で Cmd+V を試してね')
-        return
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser' } as MediaTrackConstraints,
+        audio: false,
+      })
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.muted = true
+      await video.play()
+      await new Promise<void>(r =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r()))
+      )
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas context unavailable')
+      ctx.drawImage(video, 0, 0)
+      const blob: Blob | null = await new Promise(r =>
+        canvas.toBlob(b => r(b), 'image/png')
+      )
+      if (!blob) throw new Error('画像生成に失敗しました')
+      setScreenshot(blob)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!/permission|denied|cancel|abort/i.test(msg)) {
+        setErrorMsg(`スクショ取得に失敗: ${msg}`)
       }
-      const items = await navigator.clipboard.read()
-      for (const item of items) {
-        const imageType = item.types.find(t => t.startsWith('image/'))
-        if (imageType) {
-          const blob = await item.getType(imageType)
-          const ext = imageType.split('/')[1] || 'png'
-          const file = new File([blob], `screenshot.${ext}`, { type: imageType })
+    } finally {
+      stream?.getTracks().forEach(t => t.stop())
+      setCapturing(false)
+    }
+  }
+
+  function onPaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
           setScreenshot(file)
-          return
+          break
         }
       }
-      setPasteError('クリップボードに画像がないみたい。先にスクショを撮ってね（Mac: Ctrl+Shift+Cmd+4 / Win: Win+Shift+S）。撮れない時は下のファイル選択でもOK！')
-    } catch (e) {
-      setPasteError(
-        e instanceof Error
-          ? `貼り付けできなかった: ${e.message}。下の「📁 ファイルを選ぶ」ボタンで代わりに添付してね`
-          : '貼り付けできなかった。ファイル選択を使ってね'
-      )
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setPasteError('画像ファイルを選んでね')
-      return
-    }
-    setScreenshot(file)
-    setPasteError(null)
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const file = Array.from(e.dataTransfer.files).find(f =>
+      f.type.startsWith('image/')
+    )
+    if (file) setScreenshot(file)
   }
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!isDragOver) setIsDragOver(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
-    const files = Array.from(e.dataTransfer?.files || [])
-    const image = files.find(f => f.type.startsWith('image/'))
-    if (!image) {
-      setPasteError('画像ファイルをドロップしてね（png / jpg / gif 等）')
-      return
-    }
-    setScreenshot(image)
-    setPasteError(null)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!message.trim()) {
-      setError('メッセージを入力してください')
-      return
-    }
-    setSending(true)
-    setError(null)
+  async function send() {
+    if (!text.trim() || sendState === 'sending') return
+    setSendState('sending')
+    setErrorMsg(null)
     try {
       const fd = new FormData()
-      fd.append('message', message.trim())
+      fd.append('text', text)
       fd.append('pageUrl', typeof window !== 'undefined' ? window.location.href : '')
-      if (screenshot) fd.append('screenshot', screenshot)
-
+      if (screenshot) {
+        fd.append('screenshot', screenshot, 'screenshot.png')
+      }
       const res = await fetch('/api/support/send', { method: 'POST', body: fd })
-      const data = (await res.json()) as {
-        results?: SendResult[]
-        error?: string
-        summary?: { anyFailed: boolean; allFailed: boolean; recipientCount: number }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        const msg = [data.error, data.details].filter(Boolean).join('\n')
+        throw new Error(msg || `HTTP ${res.status}`)
       }
-      const results = data.results || []
-      const failed = results.filter(r => !r.success)
-      if (failed.length === results.length && results.length > 0) {
-        const firstErr = failed[0]?.error || data.error || `HTTP ${res.status}`
-        setError(`送信できなかった: ${firstErr}`)
-        return
-      }
-      if (!res.ok && res.status !== 207) {
-        setError(data.error || `送信失敗 (${res.status})`)
-        return
-      }
-      setDone(true)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '通信エラー')
-    } finally {
-      setSending(false)
+      setSendState('success')
+      setTimeout(() => {
+        setOpen(false)
+        setTimeout(reset, 300)
+      }, 1500)
+    } catch (e) {
+      setSendState('error')
+      setErrorMsg(e instanceof Error ? e.message : String(e))
     }
   }
 
   return (
     <>
+      {/* FAB */}
       <button
         type="button"
-        onClick={handleOpen}
+        onClick={() => setOpen(true)}
         aria-label="サポートに連絡"
-        className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-40 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow-lg px-4 py-3 text-sm font-medium flex items-center gap-1.5 print:hidden"
+        className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-rose-700 active:scale-95 transition print:hidden"
       >
         <span aria-hidden>🆘</span>
         <span className="hidden sm:inline">サポート</span>
       </button>
 
+      {/* Modal */}
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-2 sm:p-4"
-          onClick={handleClose}
+          onClick={close}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
+            onPaste={onPaste}
+            onDrop={onDrop}
+            onDragOver={e => e.preventDefault()}
           >
-            {done ? (
-              <div className="p-6 text-center">
-                <div className="text-5xl mb-3">✅</div>
-                <h2 className="text-lg font-bold text-gray-900 mb-2">送信しました</h2>
-                <p className="text-sm text-gray-500 mb-5">
-                  龍竹さんと樺嶋さんに Google Chat で通知されました。
-                  <br />
-                  お急ぎの場合はチャットでも続きの連絡ができます。
-                </p>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+              <h2 className="font-bold text-gray-900">
+                🆘 サポートに連絡（龍竹・樺嶋）
+              </h2>
+              <button
+                type="button"
+                onClick={close}
+                disabled={sendState === 'sending'}
+                className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                aria-label="閉じる"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <p className="text-xs text-gray-500">
+                不具合・質問・要望をどうぞ。Google Chat で龍竹・樺嶋に直接届きます。
+              </p>
+
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder="例: 顧客ページで保存ボタンを押してもエラーになります"
+                rows={5}
+                disabled={sendState === 'sending'}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={handleClose}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm"
+                  type="button"
+                  onClick={captureScreenshot}
+                  disabled={capturing || sendState === 'sending'}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  閉じる
+                  📷 {capturing ? '選択待ち...' : screenshot ? '撮り直す' : 'スクショを撮る'}
                 </button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-900">🆘 サポートに連絡</h2>
+                {screenshot && (
                   <button
                     type="button"
-                    onClick={handleClose}
-                    disabled={sending}
-                    className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                    onClick={() => setScreenshot(null)}
+                    disabled={sendState === 'sending'}
+                    className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
                   >
-                    ✕
+                    削除
                   </button>
-                </div>
+                )}
+                <span className="text-xs text-gray-400">
+                  ※ 貼り付け（Cmd/Ctrl+V）・ドラッグ&ドロップでも添付可
+                </span>
+              </div>
 
-                <div className="bg-rose-50 border border-rose-100 rounded-lg p-3 text-xs text-rose-900 leading-relaxed">
-                  操作でお困りのこと・不具合を送るフォームです。
-                  <br />
-                  龍竹さん・樺嶋さんの Google Chat に直接届きます。
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    困っていること・不具合 *
-                  </label>
-                  <textarea
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    rows={5}
-                    required
-                    placeholder="例: 顧客ページで保存ボタンを押すとエラーが出ます"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+              {previewUrl && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl}
+                    alt="スクリーンショットプレビュー"
+                    className="max-h-60 w-full object-contain"
                   />
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    スクリーンショット（任意）
-                  </label>
-                  <div
-                    className={`space-y-2 rounded-lg p-3 border-2 border-dashed transition-colors ${
-                      isDragOver
-                        ? 'border-rose-500 bg-rose-50'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
-                    onDragOver={handleDragOver}
-                    onDragEnter={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <p className="text-xs text-gray-600 leading-relaxed text-center">
-                      {isDragOver ? (
-                        <span className="font-semibold text-rose-700">ここで離してね！</span>
-                      ) : (
-                        <>
-                          📎 <strong>ここに画像をドラッグ＆ドロップ</strong>
-                          <br />
-                          または下のボタンから画像を追加してね
-                        </>
-                      )}
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={handlePasteClick}
-                        disabled={sending}
-                        className="py-2 border border-gray-300 bg-white hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
-                      >
-                        📋 貼り付け
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={sending}
-                        className="py-2 border border-gray-300 bg-white hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
-                      >
-                        📁 ファイルを選ぶ
-                      </button>
-                    </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    <details className="text-xs text-gray-500">
-                      <summary className="cursor-pointer hover:text-gray-700">💡 スクショの撮り方（Mac/Win）</summary>
-                      <div className="mt-1 pl-4 leading-relaxed">
-                        <p>Mac: <code className="bg-white px-1 rounded border">Ctrl+Shift+Cmd+4</code>（クリップボード直行）</p>
-                        <p>Win: <code className="bg-white px-1 rounded border">Win+Shift+S</code></p>
-                        <p className="mt-1">撮ったら「📋 貼り付け」か、メッセージ欄で <code className="bg-white px-1 rounded border">Cmd/Ctrl+V</code></p>
-                      </div>
-                    </details>
-                    {pasteError && (
-                      <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg p-2">
-                        {pasteError}
-                      </div>
-                    )}
-                    {screenshotPreview && (
-                      <div className="relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={screenshotPreview}
-                          alt="スクリーンショットプレビュー"
-                          className="w-full max-h-48 object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setScreenshot(null)}
-                          className="absolute top-1 right-1 bg-white/90 hover:bg-white text-gray-700 rounded-full w-7 h-7 text-xs shadow"
-                          aria-label="スクリーンショットを削除"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </div>
+              {errorMsg && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 whitespace-pre-wrap">
+                  {errorMsg}
                 </div>
+              )}
 
-                {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                    ❌ {error}
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="submit"
-                    disabled={sending || !message.trim()}
-                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm"
-                  >
-                    {sending ? '送信中...' : '🆘 送信'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    disabled={sending}
-                    className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm"
-                  >
-                    キャンセル
-                  </button>
+              {sendState === 'success' && (
+                <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                  ✅ 送信しました。ありがとうございます！
                 </div>
-              </form>
-            )}
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-200 px-5 py-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={close}
+                disabled={sendState === 'sending'}
+                className="rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={send}
+                disabled={!text.trim() || sendState === 'sending' || sendState === 'success'}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:bg-rose-300"
+              >
+                {sendState === 'sending' ? '送信中...' : '送信'}
+              </button>
+            </div>
           </div>
         </div>
       )}

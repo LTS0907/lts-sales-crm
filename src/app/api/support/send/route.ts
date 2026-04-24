@@ -4,94 +4,103 @@
  * CRM 画面内「サポートに連絡」フォームからの問い合わせを
  * 龍竹・樺嶋の Google Chat DM に cs@ から送信する。
  *
- * リクエスト (multipart/form-data):
- *   - message: string (必須)  問い合わせ本文
- *   - pageUrl: string (任意)  送信元画面の URL
- *   - screenshot: File (任意) スクリーンショット画像
- *
- * レスポンス:
- *   { results: [{ recipient, success, error? }, ...] }
+ * 実装は lts-staff-hub の /api/support と同等。
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
 import { sendChatDM } from '@/lib/chat-sender'
 
 const SENDER_EMAIL = 'cs@life-time-support.com'
-const RECIPIENTS: string[] = [
+const RECIPIENTS = [
   'ryouchiku@life-time-support.com',
   'r.kabashima@life-time-support.com',
 ]
 
-export async function POST(request: NextRequest) {
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB
+
+export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  try {
-    const form = await request.formData()
-    const message = (form.get('message') as string | null)?.trim() || ''
-    const pageUrl = (form.get('pageUrl') as string | null) || ''
-    const screenshot = form.get('screenshot') as File | null
+  const formData = await request.formData()
+  const text = String(formData.get('text') ?? '').trim()
+  const pageUrl = String(formData.get('pageUrl') ?? '').trim()
+  const screenshot = formData.get('screenshot')
 
-    if (!message) {
-      return NextResponse.json({ error: 'メッセージを入力してください' }, { status: 400 })
+  if (!text) {
+    return NextResponse.json({ error: '本文を入力してください' }, { status: 400 })
+  }
+
+  let attachment: { filename: string; contentType: string; data: Buffer } | undefined
+  if (screenshot && screenshot instanceof File && screenshot.size > 0) {
+    if (screenshot.size > MAX_ATTACHMENT_BYTES) {
+      return NextResponse.json(
+        { error: 'スクリーンショットは10MB以下にしてください' },
+        { status: 413 }
+      )
     }
-
-    const userName = session.user.name || session.user.email
-    const userEmail = session.user.email
-
-    const textLines = [
-      '🆘 *CRM サポート依頼*',
-      '',
-      `👤 送信者: ${userName} (${userEmail})`,
-    ]
-    if (pageUrl) textLines.push(`🔗 ページ: ${pageUrl}`)
-    textLines.push('', '💬 内容:', message)
-    const text = textLines.join('\n')
-
-    let attachment: { filename: string; contentType: string; data: Buffer } | undefined
-    if (screenshot && screenshot.size > 0) {
-      const maxBytes = 10 * 1024 * 1024 // 10MB
-      if (screenshot.size > maxBytes) {
-        return NextResponse.json(
-          { error: 'スクリーンショットは 10MB 以下にしてください' },
-          { status: 400 }
-        )
-      }
-      const buf = Buffer.from(await screenshot.arrayBuffer())
-      attachment = {
-        filename: screenshot.name || 'screenshot.png',
-        contentType: screenshot.type || 'image/png',
-        data: buf,
-      }
+    const buf = Buffer.from(await screenshot.arrayBuffer())
+    const safeName =
+      screenshot.name && /\.[a-z0-9]+$/i.test(screenshot.name)
+        ? screenshot.name
+        : `screenshot-${Date.now()}.png`
+    attachment = {
+      filename: safeName,
+      contentType: screenshot.type || 'image/png',
+      data: buf,
     }
+  }
 
-    const results = await Promise.all(
-      RECIPIENTS.map(async recipient => {
-        const r = await sendChatDM({
-          senderEmail: SENDER_EMAIL,
-          recipientEmail: recipient,
-          text,
-          attachment,
-        })
-        if (!r.success) {
-          console.error(`[support/send] ${recipient} failed:`, r.error)
-        }
-        return { recipient, success: r.success, error: r.error }
-      })
+  const senderName = session.user.name ?? '(名前不明)'
+  const senderEmail = session.user.email
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+
+  const messageText = [
+    '📩 *Sales CRM サポート問い合わせ*',
+    '',
+    `👤 差出人: ${senderName} (${senderEmail})`,
+    `🕒 送信日時: ${now}`,
+    pageUrl ? `🔗 ページ: ${pageUrl}` : null,
+    '',
+    '—— 本文 ——',
+    text,
+  ]
+    .filter(l => l !== null)
+    .join('\n')
+
+  const results = await Promise.all(
+    RECIPIENTS.map(to =>
+      sendChatDM({
+        senderEmail: SENDER_EMAIL,
+        recipientEmail: to,
+        text: messageText,
+        attachment,
+      }).then(r => ({ to, ...r }))
     )
+  )
 
-    const anyFailed = results.some(r => !r.success)
-    const allFailed = results.every(r => !r.success)
+  const failed = results.filter(r => !r.success)
+
+  if (failed.length > 0) {
+    console.error('[support] send failures:', JSON.stringify(failed, null, 2))
+  }
+
+  if (failed.length === results.length) {
     return NextResponse.json(
-      { results, summary: { anyFailed, allFailed, recipientCount: results.length } },
-      { status: allFailed ? 500 : anyFailed ? 207 : 200 }
+      {
+        error: '送信に失敗しました',
+        details: failed.map(f => `${f.to}: ${f.error}`).join(' / '),
+      },
+      { status: 500 }
     )
-  } catch (err: unknown) {
-    console.error('[support/send] Error:', err)
-    const msg = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: `送信に失敗しました: ${msg}` }, { status: 500 })
   }
+
+  return NextResponse.json({
+    success: true,
+    sent: results.filter(r => r.success).map(r => r.to),
+    failed: failed.map(f => ({ to: f.to, error: f.error })),
+  })
 }
