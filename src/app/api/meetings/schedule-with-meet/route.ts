@@ -1,7 +1,7 @@
 /**
  * POST /api/meetings/schedule-with-meet
  *
- * Google Calendar にイベントを作成（Meet link自動発行付き）し、
+ * Google Calendar にイベントを作成（オンラインはMeet自動発行、オフラインは場所のみ）し、
  * Meetingレコードを DB に保存する統合エンドポイント。
  *
  * リクエスト:
@@ -11,6 +11,8 @@
  *     date: string               // ISO8601 (JST)
  *     duration: number           // 分
  *     description?: string       // 詳細
+ *     location?: string          // オフライン時の場所
+ *     meetingType?: 'online' | 'offline'  // デフォルト: online
  *     inviteParticipants?: boolean  // Calendar招待メール送信
  *     calendarId?: string        // デフォルト: 'primary'
  *     owner?: string             // KAZUI | KABASHIMA | SHARED
@@ -21,7 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { google } from 'googleapis'
+import { google, calendar_v3 } from 'googleapis'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '../../auth/[...nextauth]/route'
 
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
       date,
       duration = 30,
       description = '',
+      location,
+      meetingType = 'online',
       inviteParticipants = true,
       calendarId = 'primary',
       owner = 'KAZUI',
@@ -46,6 +50,11 @@ export async function POST(request: NextRequest) {
 
     if (!title || !date) {
       return NextResponse.json({ error: 'title と date は必須です' }, { status: 400 })
+    }
+
+    const isOffline = meetingType === 'offline'
+    if (isOffline && (!location || !String(location).trim())) {
+      return NextResponse.json({ error: '対面の場合は場所を入力してください' }, { status: 400 })
     }
 
     // 参加者のContact情報を取得（email付き）
@@ -58,7 +67,7 @@ export async function POST(request: NextRequest) {
     const startDate = new Date(date)
     const endDate = new Date(startDate.getTime() + duration * 60 * 1000)
 
-    // Google Calendar イベント作成（Meet付き）
+    // Google Calendar イベント作成
     const oauth2 = new google.auth.OAuth2()
     oauth2.setCredentials({ access_token: session.accessToken as string })
     const calendar = google.calendar({ version: 'v3', auth: oauth2 })
@@ -67,32 +76,38 @@ export async function POST(request: NextRequest) {
       ? contacts.filter(c => c.email).map(c => ({ email: c.email!, displayName: c.name }))
       : []
 
+    const requestBody: calendar_v3.Schema$Event = {
+      summary: title,
+      description: description || `LTS 打ち合わせ\n\n参加者: ${contacts.map(c => c.name).join('、')}`,
+      start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Tokyo' },
+      end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Tokyo' },
+      attendees,
+    }
+
+    if (isOffline) {
+      requestBody.location = String(location).trim()
+    } else {
+      requestBody.conferenceData = {
+        createRequest: {
+          requestId: `meet-${crypto.randomUUID()}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      }
+    }
+
     const eventRes = await calendar.events.insert({
       calendarId,
       sendUpdates: inviteParticipants ? 'all' : 'none',
-      conferenceDataVersion: 1,
-      requestBody: {
-        summary: title,
-        description: description || `LTS 打ち合わせ\n\n参加者: ${contacts.map(c => c.name).join('、')}`,
-        start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Tokyo' },
-        end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Tokyo' },
-        attendees,
-        conferenceData: {
-          createRequest: {
-            requestId: `meet-${crypto.randomUUID()}`,
-            conferenceSolutionKey: { type: 'hangoutsMeet' },
-          },
-        },
-        // 録画・transcript 自動化が有効な組織なら自動でON
-        // reminders 等はユーザー設定に任せる
-      },
+      conferenceDataVersion: isOffline ? 0 : 1,
+      requestBody,
     })
 
     const event = eventRes.data
-    const meetUrl =
-      event.hangoutLink ||
-      event.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri ||
-      null
+    const meetUrl = isOffline
+      ? null
+      : event.hangoutLink ||
+        event.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri ||
+        null
 
     // Meeting レコードを DB に保存
     const meetingId = crypto.randomUUID()
@@ -103,6 +118,7 @@ export async function POST(request: NextRequest) {
         date: startDate,
         duration,
         notes: description || null,
+        location: isOffline ? String(location).trim() : null,
         googleEventId: event.id || null,
         meetUrl,
         calendarId,
