@@ -57,14 +57,18 @@ async function findDirectMessageSpace(
   return data.name ?? null;
 }
 
-/** 添付ファイルをDMスペースにアップロードし attachmentDataRef を返す */
+/**
+ * 添付ファイルをDMスペースにアップロードし attachmentDataRef を返す。
+ * Chat API は通常 `attachmentUploadToken` を返す（新形式）。
+ * 古いレスポンスでは `resourceName` だけのこともあるため両対応。
+ */
 async function uploadAttachment(params: {
   senderEmail: string;
   space: string;
   filename: string;
   contentType: string;
   data: Buffer;
-}): Promise<{ resourceName: string; attachmentToken?: string }> {
+}): Promise<{ resourceName?: string; attachmentUploadToken?: string }> {
   const { senderEmail, space, filename, contentType, data } = params;
   const auth = await getAuthForSender(senderEmail);
   const token = (await auth.getAccessToken()).token;
@@ -96,15 +100,15 @@ async function uploadAttachment(params: {
     throw new Error(`attachment upload HTTP ${res.status}: ${err.slice(0, 300)}`);
   }
   const json = (await res.json()) as {
-    attachmentDataRef?: { resourceName?: string; attachmentToken?: string };
+    attachmentDataRef?: { resourceName?: string; attachmentUploadToken?: string };
   };
   const ref = json.attachmentDataRef;
-  if (!ref?.resourceName) {
-    throw new Error("attachment upload: no resourceName returned");
+  if (!ref?.resourceName && !ref?.attachmentUploadToken) {
+    throw new Error("attachment upload: neither resourceName nor attachmentUploadToken returned");
   }
   return {
     resourceName: ref.resourceName,
-    attachmentToken: ref.attachmentToken,
+    attachmentUploadToken: ref.attachmentUploadToken,
   };
 }
 
