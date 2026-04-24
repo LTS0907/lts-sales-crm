@@ -40,14 +40,21 @@ declare global {
   var __cs_logged: boolean | undefined;
 }
 
-/** sender として認証済みクライアントを取得（ドメインワイド委譲） */
+/**
+ * sender として認証済みクライアントを取得（ドメインワイド委譲）
+ *
+ * スコープは Google Workspace 管理コンソールの DWD 登録と完全一致が必須。
+ * 登録済みスコープ（2026-04-25 時点）:
+ *   - chat.spaces.readonly  （DM space の findDirectMessage 用）
+ *   - chat.messages.create  （メッセージ送信・添付アップロード用）
+ */
 async function getAuthForSender(senderEmail: string) {
   const creds = parseServiceAccountKey();
   const auth = new google.auth.JWT({
     email: creds.client_email,
     key: creds.private_key,
     scopes: [
-      "https://www.googleapis.com/auth/chat.spaces",
+      "https://www.googleapis.com/auth/chat.spaces.readonly",
       "https://www.googleapis.com/auth/chat.messages.create",
     ],
     subject: senderEmail,
