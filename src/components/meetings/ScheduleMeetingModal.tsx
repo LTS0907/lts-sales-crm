@@ -3,6 +3,16 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+type MeetingType = 'online' | 'offline'
+
+function buildDefaultTitle(contact: { name: string; company?: string | null }): string {
+  const name = contact.name?.trim()
+  const company = contact.company?.trim()
+  if (company && name) return `打ち合わせ　${company}　${name}様`
+  if (company) return `打ち合わせ　${company}様`
+  return `打ち合わせ　${name}様`
+}
+
 export default function ScheduleMeetingModal({
   contact,
   open,
@@ -26,15 +36,18 @@ export default function ScheduleMeetingModal({
   }
 
   const [form, setForm] = useState({
-    title: contact.company ? `${contact.company} 打ち合わせ` : `${contact.name}様 打ち合わせ`,
+    title: buildDefaultTitle(contact),
     date: getDefaultDate(),
     duration: 30,
     description: '',
+    location: '',
+    meetingType: 'online' as MeetingType,
     inviteParticipants: true,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ meetUrl: string | null; htmlLink: string | null } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   if (!open) return null
 
@@ -53,6 +66,8 @@ export default function ScheduleMeetingModal({
           date: new Date(form.date).toISOString(),
           duration: Number(form.duration),
           description: form.description,
+          location: form.meetingType === 'offline' ? form.location : undefined,
+          meetingType: form.meetingType,
           inviteParticipants: form.inviteParticipants,
           owner: contact.owner || 'KAZUI',
         }),
@@ -74,6 +89,27 @@ export default function ScheduleMeetingModal({
     }
   }
 
+  const handleCopyUrl = async () => {
+    if (!result?.meetUrl) return
+    try {
+      await navigator.clipboard.writeText(result.meetUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard API が使えない場合のフォールバック
+      const el = document.createElement('textarea')
+      el.value = result.meetUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const isOffline = form.meetingType === 'offline'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
@@ -88,14 +124,23 @@ export default function ScheduleMeetingModal({
             <p className="text-sm text-gray-500 mb-5">Googleカレンダーに登録されました</p>
             <div className="space-y-2 mb-5">
               {result.meetUrl && (
-                <a
-                  href={result.meetUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm"
-                >
-                  🎥 Google Meet を開く
-                </a>
+                <>
+                  <a
+                    href={result.meetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm"
+                  >
+                    🎥 Google Meet を開く
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleCopyUrl}
+                    className="block w-full py-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg font-medium text-sm border border-emerald-200"
+                  >
+                    {copied ? '✅ コピーしました' : '📋 Meet URL をコピー'}
+                  </button>
+                </>
               )}
               {result.htmlLink && (
                 <a
@@ -129,6 +174,35 @@ export default function ScheduleMeetingModal({
               {contact.email && <div className="text-xs text-blue-600 mt-0.5">📧 {contact.email}</div>}
             </div>
 
+            {/* 打ち合わせタイプ切替 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">打ち合わせ形式 *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, meetingType: 'online' }))}
+                  className={`py-2.5 rounded-lg text-sm font-medium border transition ${
+                    !isOffline
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  🎥 オンライン（Meet）
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, meetingType: 'offline' }))}
+                  className={`py-2.5 rounded-lg text-sm font-medium border transition ${
+                    isOffline
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  🏢 対面（場所指定）
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">タイトル *</label>
               <input
@@ -139,6 +213,20 @@ export default function ScheduleMeetingModal({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            {isOffline && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">場所 *</label>
+                <input
+                  type="text"
+                  required={isOffline}
+                  value={form.location}
+                  onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                  placeholder="例: 弊社オフィス / 〇〇ビル1Fカフェ"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -208,7 +296,7 @@ export default function ScheduleMeetingModal({
                 disabled={loading}
                 className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm"
               >
-                {loading ? '作成中...' : '🎥 Meet付きで作成'}
+                {loading ? '作成中...' : isOffline ? '🏢 対面打ち合わせを作成' : '🎥 Meet付きで作成'}
               </button>
               <button
                 type="button"
