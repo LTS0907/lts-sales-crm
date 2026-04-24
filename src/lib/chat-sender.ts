@@ -13,12 +13,31 @@ import { google } from "googleapis";
 function parseServiceAccountKey() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY env var not set");
+  let parsed: { client_email?: string; private_key?: string; client_id?: string };
   try {
-    return JSON.parse(keyJson);
+    parsed = JSON.parse(keyJson);
   } catch {
     const decoded = Buffer.from(keyJson, "base64").toString("utf8");
-    return JSON.parse(decoded);
+    parsed = JSON.parse(decoded);
   }
+  // 診断ログ（初回呼び出し時のみ）- 機密情報は含めない
+  if (!globalThis.__cs_logged) {
+    console.log("[chat-sender] env_length:", keyJson.length);
+    console.log("[chat-sender] client_email:", parsed.client_email);
+    console.log("[chat-sender] client_id:", parsed.client_id);
+    console.log("[chat-sender] has_private_key:", !!parsed.private_key);
+    console.log(
+      "[chat-sender] private_key_prefix:",
+      parsed.private_key ? parsed.private_key.slice(0, 30) : null
+    );
+    (globalThis as unknown as { __cs_logged: boolean }).__cs_logged = true;
+  }
+  return parsed;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __cs_logged: boolean | undefined;
 }
 
 /** sender として認証済みクライアントを取得（ドメインワイド委譲） */
