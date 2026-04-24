@@ -15,6 +15,7 @@ export default function SupportButton() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export default function SupportButton() {
   // モーダル内で Ctrl/Cmd+V を受けてスクショを取り込む
   useEffect(() => {
     if (!open) return
-    const handler = (e: ClipboardEvent) => {
+    const pasteHandler = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items
       if (!items) return
       for (const item of Array.from(items)) {
@@ -45,8 +46,16 @@ export default function SupportButton() {
         }
       }
     }
-    window.addEventListener('paste', handler)
-    return () => window.removeEventListener('paste', handler)
+    // モーダル外への誤ドロップでブラウザが画像を開いてしまうのを防ぐ
+    const prevent = (e: DragEvent) => e.preventDefault()
+    window.addEventListener('paste', pasteHandler)
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('paste', pasteHandler)
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
   }, [open])
 
   if (status !== 'authenticated' || !session?.user?.email) return null
@@ -106,6 +115,32 @@ export default function SupportButton() {
       return
     }
     setScreenshot(file)
+    setPasteError(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragOver) setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer?.files || [])
+    const image = files.find(f => f.type.startsWith('image/'))
+    if (!image) {
+      setPasteError('画像ファイルをドロップしてね（png / jpg / gif 等）')
+      return
+    }
+    setScreenshot(image)
     setPasteError(null)
   }
 
@@ -223,22 +258,34 @@ export default function SupportButton() {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
                     スクリーンショット（任意）
                   </label>
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500 leading-relaxed">
-                      1️⃣ OS のショートカットでスクショを撮る
-                      <br />
-                      <span className="ml-4">Mac: <code className="bg-gray-100 px-1 rounded">Ctrl+Shift+Cmd+4</code></span>
-                      <br />
-                      <span className="ml-4">Win: <code className="bg-gray-100 px-1 rounded">Win+Shift+S</code></span>
-                      <br />
-                      2️⃣ 下のボタンか、メッセージ欄で <code className="bg-gray-100 px-1 rounded">Cmd/Ctrl+V</code> を押して貼り付け
+                  <div
+                    className={`space-y-2 rounded-lg p-3 border-2 border-dashed transition-colors ${
+                      isDragOver
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <p className="text-xs text-gray-600 leading-relaxed text-center">
+                      {isDragOver ? (
+                        <span className="font-semibold text-rose-700">ここで離してね！</span>
+                      ) : (
+                        <>
+                          📎 <strong>ここに画像をドラッグ＆ドロップ</strong>
+                          <br />
+                          または下のボタンから画像を追加してね
+                        </>
+                      )}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={handlePasteClick}
                         disabled={sending}
-                        className="py-2 border border-dashed border-gray-300 hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
+                        className="py-2 border border-gray-300 bg-white hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
                       >
                         📋 貼り付け
                       </button>
@@ -246,7 +293,7 @@ export default function SupportButton() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={sending}
-                        className="py-2 border border-dashed border-gray-300 hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
+                        className="py-2 border border-gray-300 bg-white hover:border-rose-400 hover:bg-rose-50 rounded-lg text-sm text-gray-700 disabled:opacity-50"
                       >
                         📁 ファイルを選ぶ
                       </button>
@@ -258,6 +305,14 @@ export default function SupportButton() {
                       onChange={handleFileChange}
                       className="hidden"
                     />
+                    <details className="text-xs text-gray-500">
+                      <summary className="cursor-pointer hover:text-gray-700">💡 スクショの撮り方（Mac/Win）</summary>
+                      <div className="mt-1 pl-4 leading-relaxed">
+                        <p>Mac: <code className="bg-white px-1 rounded border">Ctrl+Shift+Cmd+4</code>（クリップボード直行）</p>
+                        <p>Win: <code className="bg-white px-1 rounded border">Win+Shift+S</code></p>
+                        <p className="mt-1">撮ったら「📋 貼り付け」か、メッセージ欄で <code className="bg-white px-1 rounded border">Cmd/Ctrl+V</code></p>
+                      </div>
+                    </details>
                     {pasteError && (
                       <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg p-2">
                         {pasteError}
