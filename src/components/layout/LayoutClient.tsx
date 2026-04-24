@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
 import TaskPanel from './TaskPanel'
+import SupportButton from '../support/SupportButton'
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -50,6 +51,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
       {/* Google Tasks右パネル */}
       <TaskPanel />
+
+      {/* サポート連絡フローティングボタン（全画面常駐） */}
+      <SupportButton />
     </div>
   )
 }
