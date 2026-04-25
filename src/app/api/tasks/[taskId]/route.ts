@@ -14,6 +14,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
+import { clearCached, tokenKey } from '@/lib/tasks-cache'
+
+function invalidateCache(accessToken: string) {
+  clearCached(tokenKey(accessToken))
+}
 
 // PATCH /api/tasks/[taskId] — 削除→再作成で確実にGoogle同期
 export async function PATCH(
@@ -47,6 +52,7 @@ export async function PATCH(
         task: taskId,
         requestBody: statusBody,
       })
+      invalidateCache(session.accessToken as string)
       return NextResponse.json({
         id: updated.data.id,
         title: updated.data.title,
@@ -79,6 +85,8 @@ export async function PATCH(
       tasklist: taskListId,
       requestBody: newTask,
     })
+
+    invalidateCache(session.accessToken as string)
 
     return NextResponse.json({
       id: created.data.id,
@@ -116,6 +124,8 @@ export async function DELETE(
     const resolvedListId = taskListId || await getOrCreateCrmTaskList(client)
 
     await client.tasks.delete({ tasklist: resolvedListId, task: taskId })
+
+    invalidateCache(session.accessToken as string)
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {

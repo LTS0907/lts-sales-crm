@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { getTasksClient } from '@/lib/google-tasks'
+import { clearCached, tokenKey } from '@/lib/tasks-cache'
 
 // POST /api/tasks/reorder — Google Tasks の move API でタスク順序を変更
 export async function POST(req: NextRequest) {
@@ -36,6 +37,8 @@ export async function POST(req: NextRequest) {
       task: taskId,
       previous: previousTaskId || undefined,
     })
+
+    clearCached(tokenKey(session.accessToken as string))
 
     return NextResponse.json({
       id: res.data.id,

@@ -15,16 +15,55 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { getTasksClient, getOrCreateCrmTaskList, getAllTaskLists } from '@/lib/google-tasks'
+import {
+  TasksPayload,
+  tokenKey,
+  getCached,
+  getStale,
+  setCached,
+  clearCached,
+  isQuotaBackoff,
+  startQuotaBackoff,
+} from '@/lib/tasks-cache'
 
-// GET /api/tasks — 全Google Tasksリストのタスクを返す
+// GET /api/tasks — 全Google Tasksリストのタスクを返す（キャッシュ + 429バックオフ付き）
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const accessToken = session.accessToken as string
+  const cacheKey = tokenKey(accessToken)
+
+  // 1. ホットキャッシュ命中なら即返却
+  const fresh = getCached(cacheKey)
+  if (fresh) {
+    return NextResponse.json(fresh, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
+    })
+  }
+
+  // 2. クォータ超過バックオフ中なら、古いキャッシュ（あれば）を返す or 429
+  if (isQuotaBackoff(cacheKey)) {
+    const stale = getStale(cacheKey)
+    if (stale) {
+      return NextResponse.json(stale, {
+        headers: { 'Cache-Control': 'private, max-age=30', 'X-Quota-Stale': '1' },
+      })
+    }
+    return NextResponse.json(
+      {
+        error: 'Google Tasks APIのクォータ上限に達しています。10分後に自動で再試行します。',
+        tasks: [],
+        taskLists: [],
+      },
+      { status: 429 }
+    )
+  }
+
   try {
-    const client = getTasksClient(session.accessToken)
+    const client = getTasksClient(accessToken)
     const taskLists = await getAllTaskLists(client)
 
     const allTasks = await Promise.all(
@@ -50,9 +89,14 @@ export async function GET() {
       })
     )
 
-    return NextResponse.json({
-      taskLists,
+    const payload: TasksPayload = {
+      taskLists: taskLists.map(l => ({ id: l.id!, title: l.title! })),
       tasks: allTasks.flat(),
+    }
+    setCached(cacheKey, payload)
+
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
     })
   } catch (err: any) {
     console.error('Tasks GET error:', err)
@@ -61,6 +105,13 @@ export async function GET() {
     }
     const msg = String(err?.message || '')
     if (msg.includes('Quota exceeded') || err?.code === 429) {
+      startQuotaBackoff(cacheKey)
+      const stale = getStale(cacheKey)
+      if (stale) {
+        return NextResponse.json(stale, {
+          headers: { 'Cache-Control': 'private, max-age=30', 'X-Quota-Stale': '1' },
+        })
+      }
       return NextResponse.json(
         {
           error:
@@ -121,6 +172,9 @@ export async function POST(req: NextRequest) {
       tasklist: taskListId,
       requestBody,
     })
+
+    // 変更があったのでこのユーザーのキャッシュを破棄
+    clearCached(tokenKey(session.accessToken as string))
 
     // Save link if contactId provided
     if (contactId) {
