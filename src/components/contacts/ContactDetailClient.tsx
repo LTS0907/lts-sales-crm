@@ -413,7 +413,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                 onClick={() => setScheduleModalOpen(true)}
                 className="px-3 py-1 text-xs border border-green-200 text-green-700 rounded-lg hover:bg-green-50"
               >
-                📅 Meet発行
+                📅 打ち合わせ
               </button>
               <button
                 onClick={() => setTaskModalOpen(true)}
