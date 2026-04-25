@@ -59,6 +59,18 @@ export async function GET() {
     if (err.message?.includes('insufficient') || err.code === 403) {
       return NextResponse.json({ error: 'Google Tasksの権限がありません。ログアウトして再ログインしてください。' }, { status: 403 })
     }
+    const msg = String(err?.message || '')
+    if (msg.includes('Quota exceeded') || err?.code === 429) {
+      return NextResponse.json(
+        {
+          error:
+            'Google Tasks APIの1日あたりリクエスト上限に達しました。明日には自動的に復旧します。お急ぎの場合は管理者がGoogle Cloudコンソールでクォータ増を申請できます。',
+          tasks: [],
+          taskLists: [],
+        },
+        { status: 429 }
+      )
+    }
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

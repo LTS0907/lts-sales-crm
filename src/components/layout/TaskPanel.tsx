@@ -270,7 +270,9 @@ export default function TaskPanel() {
 
   useEffect(() => {
     if (!session?.accessToken) return
-    const interval = setInterval(fetchTasks, 60000)
+    // Tasks API のクォータ（プロジェクト単位50,000リクエスト/日）に配慮して
+    // 自動更新は5分間隔。即時反映が必要なら手動の🔄ボタンで更新する。
+    const interval = setInterval(fetchTasks, 300000)
     return () => clearInterval(interval)
   }, [session?.accessToken, fetchTasks])
 
