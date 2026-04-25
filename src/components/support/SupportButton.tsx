@@ -14,6 +14,8 @@ export default function SupportButton() {
   const [sendState, setSendState] = useState<SendState>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [capturing, setCapturing] = useState(false)
+  const [autoCapturing, setAutoCapturing] = useState(false)
+  const [fabHidden, setFabHidden] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
