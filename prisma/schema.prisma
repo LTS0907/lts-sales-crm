@@ -45,6 +45,8 @@ model Contact {
   driveFolderId       String?
   // 担当者: "KAZUI"（龍竹）| "KABASHIMA"（樺嶋）| "SHARED"（共同）
   owner               String               @default("KAZUI")
+  // 顧客からの返信があった最終時刻（mail-bot reply detector が更新）
+  lastReplyAt         DateTime?
   Exchange            Exchange[]
   FollowUpLog         FollowUpLog[]
   GroupMember         GroupMember[]
@@ -68,15 +70,20 @@ model Exchange {
 }
 
 model FollowUpLog {
-  id          String    @id
-  createdAt   DateTime  @default(now())
-  contactId   String
-  touchNumber Int
-  subject     String?
-  body        String?
-  status      String    @default("DRAFTED")
-  sentAt      DateTime?
-  Contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id              String    @id
+  createdAt       DateTime  @default(now())
+  contactId       String
+  touchNumber     Int
+  subject         String?
+  body            String?
+  status          String    @default("DRAFTED")
+  sentAt          DateTime?
+  // Gmail送信結果（reply detector が threadId 一致で返信検知）
+  gmailMessageId  String?
+  gmailThreadId   String?
+  Contact         Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([gmailThreadId])
 }
 
 model Group {

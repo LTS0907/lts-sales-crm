@@ -204,6 +204,8 @@ async function main() {
             subject, body,
             status: 'SENT',
             sentAt: now,
+            gmailMessageId: sendRes.data.id,
+            gmailThreadId: sendRes.data.threadId,
           },
         })
         await markSheetSent({ email: v.email, sentAt: now })

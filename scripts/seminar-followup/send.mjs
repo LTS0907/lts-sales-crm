@@ -132,6 +132,8 @@ async function main() {
       body: contact.emailBody,
       status: 'SENT',
       sentAt: now,
+      gmailMessageId: res.data.id,
+      gmailThreadId: res.data.threadId,
     },
   })
 

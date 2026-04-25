@@ -301,6 +301,8 @@ async function main() {
             subject, body,
             status: 'SENT',
             sentAt: now,
+            gmailMessageId: sendRes.data.id,
+            gmailThreadId: sendRes.data.threadId,
           },
         })
         // スプシ更新
