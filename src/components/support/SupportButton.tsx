@@ -49,6 +49,48 @@ export default function SupportButton() {
     setTimeout(reset, 300)
   }
 
+  /**
+   * サポートボタン押下時に画面を自動キャプチャしてからモーダルを開く
+   * - FAB は撮影中は隠す（写り込み防止）
+   * - html2canvas-pro で DOM をキャプチャ（権限ダイアログ不要）
+   * - 失敗してもモーダルは必ず開く（手動添付フォールバック）
+   */
+  async function openWithAutoCapture() {
+    setErrorMsg(null)
+    setAutoCapturing(true)
+    setFabHidden(true)
+    try {
+      // FAB が DOM から消えるのを 1 フレーム待つ
+      await new Promise<void>(r =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r()))
+      )
+      const { default: html2canvas } = await import('html2canvas-pro')
+      const canvas = await html2canvas(document.documentElement, {
+        backgroundColor: '#ffffff',
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        useCORS: true,
+        logging: false,
+        // 表示中の領域だけ撮る（ページ全体ではなくビューポート）
+        x: window.scrollX,
+        y: window.scrollY,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+      const blob: Blob | null = await new Promise(r =>
+        canvas.toBlob(b => r(b), 'image/png')
+      )
+      if (blob) setScreenshot(blob)
+    } catch (e) {
+      console.warn('[support] auto capture failed:', e)
+      // 自動キャプチャの失敗はモーダル内に簡潔に表示するだけ
+      setErrorMsg('自動スクショに失敗したけど、モーダル内でドラッグ&ドロップや貼り付けで添付できるよ')
+    } finally {
+      setFabHidden(false)
+      setAutoCapturing(false)
+      setOpen(true)
+    }
+  }
+
   async function captureScreenshot() {
     setErrorMsg(null)
     if (
@@ -148,16 +190,19 @@ export default function SupportButton() {
 
   return (
     <>
-      {/* FAB */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="サポートに連絡"
-        className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-rose-700 active:scale-95 transition print:hidden"
-      >
-        <span aria-hidden>🆘</span>
-        <span className="hidden sm:inline">サポート</span>
-      </button>
+      {/* FAB（撮影中は写り込み防止のため非表示） */}
+      {!fabHidden && (
+        <button
+          type="button"
+          onClick={openWithAutoCapture}
+          disabled={autoCapturing}
+          aria-label="サポートに連絡"
+          className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-rose-700 active:scale-95 transition disabled:opacity-70 print:hidden"
+        >
+          <span aria-hidden>{autoCapturing ? '⏳' : '🆘'}</span>
+          <span className="hidden sm:inline">{autoCapturing ? '撮影中...' : 'サポート'}</span>
+        </button>
+      )}
 
       {/* Modal */}
       {open && (
@@ -192,6 +237,8 @@ export default function SupportButton() {
             <div className="px-5 py-4 overflow-y-auto flex-1 space-y-3">
               <p className="text-xs text-gray-500">
                 不具合・質問・要望をどうぞ。Google Chat で龍竹・樺嶋に直接届きます。
+                <br />
+                📸 押した瞬間の画面はもうスクショされてるから、本文だけ書けばOK！
               </p>
 
               <textarea
@@ -211,7 +258,7 @@ export default function SupportButton() {
                   disabled={capturing || sendState === 'sending'}
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  📷 {capturing ? '選択待ち...' : screenshot ? '撮り直す' : 'スクショを撮る'}
+                  📷 {capturing ? '選択待ち...' : screenshot ? '別ウィンドウで撮り直す' : '別ウィンドウを撮る'}
                 </button>
                 {screenshot && (
                   <button
