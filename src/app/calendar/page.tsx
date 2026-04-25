@@ -122,6 +122,7 @@ function EventEditModal({
   onDelete,
   saving,
   deleting,
+  availableCalendars,
 }: {
   event: GoogleEvent
   onClose: () => void
@@ -129,8 +130,11 @@ function EventEditModal({
   onDelete: (event: GoogleEvent) => void
   saving: boolean
   deleting: boolean
+  availableCalendars: { id: string; name: string }[]
 }) {
+  const isCreate = !event.id
   const [title, setTitle] = useState(event.title)
+  const [calendarId, setCalendarId] = useState(event.calendarId || availableCalendars[0]?.id || 'primary')
   const [startDate, setStartDate] = useState(
     event.allDay ? event.start : format(parseISO(event.start), "yyyy-MM-dd'T'HH:mm")
   )
@@ -151,6 +155,7 @@ function EventEditModal({
       location,
       description,
       allDay,
+      calendarId,
     })
   }
 
@@ -158,7 +163,7 @@ function EventEditModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-bold text-gray-900">予定を編集</h2>
+          <h2 className="text-lg font-bold text-gray-900">{isCreate ? '予定を作成' : '予定を編集'}</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
@@ -167,6 +172,25 @@ function EventEditModal({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {isCreate && availableCalendars.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                登録先カレンダー
+              </label>
+              <select
+                value={calendarId}
+                onChange={e => setCalendarId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {availableCalendars.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               タイトル
@@ -247,15 +271,17 @@ function EventEditModal({
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => onDelete(event)}
-              disabled={saving || deleting}
-              className="px-3 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50 text-sm"
-              title="この予定をGoogleカレンダーから削除"
-            >
-              {deleting ? '削除中...' : '🗑️ 削除'}
-            </button>
+            {!isCreate && (
+              <button
+                type="button"
+                onClick={() => onDelete(event)}
+                disabled={saving || deleting}
+                className="px-3 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50 text-sm"
+                title="この予定をGoogleカレンダーから削除"
+              >
+                {deleting ? '削除中...' : '🗑️ 削除'}
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -269,7 +295,7 @@ function EventEditModal({
               disabled={saving || deleting}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? '保存中...' : '保存'}
+              {saving ? '保存中...' : isCreate ? '作成' : '保存'}
             </button>
           </div>
         </form>
@@ -333,27 +359,61 @@ export default function CalendarPage() {
     }
   }, [fetchEvents, session?.accessToken])
 
+  // 「+ 予定を作成」用のドラフトイベント生成（次の正時から1時間）
+  const openCreateModal = () => {
+    const now = new Date()
+    const start = new Date(now)
+    start.setMinutes(0, 0, 0)
+    start.setHours(start.getHours() + 1)
+    const end = new Date(start.getTime() + 60 * 60 * 1000)
+    const fmt = (d: Date) => {
+      const tz = d.getTimezoneOffset() * 60000
+      return new Date(d.getTime() - tz).toISOString().slice(0, 16)
+    }
+    setEditingEvent({
+      id: '',
+      title: '',
+      start: fmt(start),
+      end: fmt(end),
+      allDay: false,
+      calendarId: session?.user?.email || 'primary',
+    })
+  }
+
   const handleSaveEvent = async (data: Partial<GoogleEvent>) => {
+    const isCreate = !data.id
     setSaving(true)
     try {
       const res = await fetch('/api/google-calendar', {
-        method: 'PATCH',
+        method: isCreate ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId: data.id,
-          calendarId: editingEvent?.calendarId,
-          title: data.title,
-          start: data.start,
-          end: data.end,
-          location: data.location,
-          description: data.description,
-          allDay: data.allDay,
-        }),
+        body: JSON.stringify(
+          isCreate
+            ? {
+                title: data.title,
+                start: data.start,
+                end: data.end,
+                location: data.location,
+                description: data.description,
+                allDay: data.allDay,
+                calendarId: data.calendarId,
+              }
+            : {
+                eventId: data.id,
+                calendarId: data.calendarId || editingEvent?.calendarId,
+                title: data.title,
+                start: data.start,
+                end: data.end,
+                location: data.location,
+                description: data.description,
+                allDay: data.allDay,
+              }
+        ),
       })
 
       if (!res.ok) {
         const errorData = await res.json()
-        throw new Error(errorData.error || '予定の更新に失敗しました')
+        throw new Error(errorData.error || (isCreate ? '予定の作成に失敗しました' : '予定の更新に失敗しました'))
       }
 
       setEditingEvent(null)
@@ -499,6 +559,12 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           <button
+            onClick={openCreateModal}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+          >
+            + 予定を作成
+          </button>
+          <button
             onClick={goToToday}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
@@ -609,6 +675,12 @@ export default function CalendarPage() {
           onDelete={handleDeleteEvent}
           saving={saving}
           deleting={deleting}
+          availableCalendars={[
+            { id: session.user?.email || 'primary', name: 'マイカレンダー' },
+            ...buildLegend(events)
+              .filter(l => l.calendarId !== session.user?.email && l.calendarId !== 'primary')
+              .map(l => ({ id: l.calendarId, name: l.calendarName })),
+          ]}
         />
       )}
     </div>

@@ -227,6 +227,79 @@ export async function PATCH(request: Request) {
   }
 }
 
+// POST /api/google-calendar — 新規予定作成
+export async function POST(request: Request) {
+  const session = await getServerSession(authOptions)
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+
+  try {
+    const body = await request.json()
+    const {
+      title,
+      start,
+      end,
+      location,
+      description,
+      allDay,
+      calendarId,
+    } = body
+
+    if (!title || !start || !end) {
+      return NextResponse.json({ error: 'title, start, end は必須です' }, { status: 400 })
+    }
+
+    const oauth2Client = new google.auth.OAuth2()
+    oauth2Client.setCredentials({ access_token: session.accessToken })
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
+
+    const eventBody: {
+      summary: string
+      location?: string
+      description?: string
+      start: { dateTime?: string; date?: string; timeZone?: string }
+      end: { dateTime?: string; date?: string; timeZone?: string }
+    } = {
+      summary: title,
+      location: location || undefined,
+      description: description || undefined,
+      start: allDay
+        ? { date: String(start).split('T')[0] }
+        : { dateTime: toISOWithTimezone(start), timeZone: 'Asia/Tokyo' },
+      end: allDay
+        ? { date: String(end).split('T')[0] }
+        : { dateTime: toISOWithTimezone(end), timeZone: 'Asia/Tokyo' },
+    }
+
+    const response = await calendar.events.insert({
+      calendarId: calendarId || 'primary',
+      requestBody: eventBody,
+      sendUpdates: 'none',
+    })
+
+    const ev = response.data
+    return NextResponse.json({
+      id: ev.id,
+      title: ev.summary || '(タイトルなし)',
+      start: ev.start?.dateTime || ev.start?.date,
+      end: ev.end?.dateTime || ev.end?.date,
+      location: ev.location,
+      description: ev.description,
+      htmlLink: ev.htmlLink,
+      allDay: !ev.start?.dateTime,
+      calendarId: calendarId || 'primary',
+    })
+  } catch (error: unknown) {
+    console.error('Google Calendar POST error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const gaxiosError = error as { response?: { status?: number; data?: { error?: { message?: string } } } }
+    const status = gaxiosError?.response?.status || 500
+    const apiError = gaxiosError?.response?.data?.error?.message || errorMessage
+    return NextResponse.json({ error: `予定の作成に失敗: ${apiError}` }, { status })
+  }
+}
+
 // DELETE /api/google-calendar?eventId=xxx&calendarId=xxx
 export async function DELETE(request: Request) {
   const session = await getServerSession(authOptions)
