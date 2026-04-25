@@ -38,7 +38,7 @@ export default function ScheduleMeetingModal({
   const [form, setForm] = useState({
     title: buildDefaultTitle(contact),
     date: getDefaultDate(),
-    duration: 30,
+    duration: 60,
     description: '',
     location: '',
     meetingType: 'online' as MeetingType,

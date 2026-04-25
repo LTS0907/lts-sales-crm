@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       contactIds = [],
       title,
       date,
-      duration = 30,
+      duration = 60,
       description = '',
       location,
       meetingType = 'online',
