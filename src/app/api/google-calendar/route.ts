@@ -159,9 +159,9 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json()
-    const { eventId, title, start, end, location, description, allDay } = body
+    const { eventId, title, start, end, location, description, allDay, calendarId } = body
 
-    console.log('PATCH request body:', { eventId, title, start, end, location, description, allDay })
+    console.log('PATCH request body:', { eventId, calendarId, title, start, end, location, description, allDay })
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 })
@@ -203,7 +203,7 @@ export async function PATCH(request: Request) {
     console.log('Event update payload:', JSON.stringify(eventUpdate, null, 2))
 
     const response = await calendar.events.patch({
-      calendarId: 'primary',
+      calendarId: calendarId || 'primary',
       eventId: eventId,
       requestBody: eventUpdate,
     })
@@ -224,5 +224,49 @@ export async function PATCH(request: Request) {
     const gaxiosError = error as { response?: { data?: { error?: { message?: string } } } }
     const apiError = gaxiosError?.response?.data?.error?.message || errorMessage
     return NextResponse.json({ error: `Failed to update event: ${apiError}` }, { status: 500 })
+  }
+}
+
+// DELETE /api/google-calendar?eventId=xxx&calendarId=xxx
+export async function DELETE(request: Request) {
+  const session = await getServerSession(authOptions)
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const eventId = searchParams.get('eventId')
+  const calendarId = searchParams.get('calendarId') || 'primary'
+  const sendUpdates = (searchParams.get('sendUpdates') || 'all') as 'all' | 'externalOnly' | 'none'
+
+  if (!eventId) {
+    return NextResponse.json({ error: 'eventId is required' }, { status: 400 })
+  }
+
+  try {
+    const oauth2Client = new google.auth.OAuth2()
+    oauth2Client.setCredentials({ access_token: session.accessToken })
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
+
+    await calendar.events.delete({
+      calendarId,
+      eventId,
+      sendUpdates,
+    })
+
+    return NextResponse.json({ ok: true, eventId, calendarId })
+  } catch (error: unknown) {
+    console.error('Google Calendar DELETE error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const gaxiosError = error as {
+      response?: { status?: number; data?: { error?: { message?: string } } }
+    }
+    const status = gaxiosError?.response?.status || 500
+    const apiError = gaxiosError?.response?.data?.error?.message || errorMessage
+    // 既に削除済みの場合は成功扱い
+    if (status === 404 || status === 410) {
+      return NextResponse.json({ ok: true, eventId, calendarId, alreadyGone: true })
+    }
+    return NextResponse.json({ error: `予定の削除に失敗: ${apiError}` }, { status })
   }
 }

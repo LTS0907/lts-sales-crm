@@ -119,12 +119,16 @@ function EventEditModal({
   event,
   onClose,
   onSave,
+  onDelete,
   saving,
+  deleting,
 }: {
   event: GoogleEvent
   onClose: () => void
   onSave: (data: Partial<GoogleEvent>) => void
+  onDelete: (event: GoogleEvent) => void
   saving: boolean
+  deleting: boolean
 }) {
   const [title, setTitle] = useState(event.title)
   const [startDate, setStartDate] = useState(
@@ -242,17 +246,27 @@ function EventEditModal({
             />
           </div>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => onDelete(event)}
+              disabled={saving || deleting}
+              className="px-3 py-2 border border-red-300 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50 text-sm"
+              title="この予定をGoogleカレンダーから削除"
+            >
+              {deleting ? '削除中...' : '🗑️ 削除'}
+            </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              disabled={saving || deleting}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               キャンセル
             </button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || deleting}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? '保存中...' : '保存'}
@@ -274,6 +288,7 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('week')
   const [editingEvent, setEditingEvent] = useState<GoogleEvent | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchEvents = useCallback(async () => {
     if (!session?.accessToken) return
@@ -326,6 +341,7 @@ export default function CalendarPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId: data.id,
+          calendarId: editingEvent?.calendarId,
           title: data.title,
           start: data.start,
           end: data.end,
@@ -351,6 +367,38 @@ export default function CalendarPage() {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeleteEvent = async (event: GoogleEvent) => {
+    if (!event.id) return
+    const ok = window.confirm(
+      `「${event.title}」を削除します。\n参加者にも削除通知が送信されます。\nよろしいですか？`
+    )
+    if (!ok) return
+
+    setDeleting(true)
+    try {
+      const params = new URLSearchParams({ eventId: event.id })
+      if (event.calendarId) params.set('calendarId', event.calendarId)
+      const res = await fetch(`/api/google-calendar?${params.toString()}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.error || '予定の削除に失敗しました')
+      }
+      setEditingEvent(null)
+      await fetchEvents()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'エラーが発生しました'
+      if (message.includes('insufficient') || message.includes('Insufficient Permission')) {
+        alert('権限エラー: 一度ログアウトして再ログインしてください。カレンダー編集の権限が必要です。')
+      } else {
+        alert(message)
+      }
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -558,7 +606,9 @@ export default function CalendarPage() {
           event={editingEvent}
           onClose={() => setEditingEvent(null)}
           onSave={handleSaveEvent}
+          onDelete={handleDeleteEvent}
           saving={saving}
+          deleting={deleting}
         />
       )}
     </div>
