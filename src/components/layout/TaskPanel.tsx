@@ -277,10 +277,7 @@ export default function TaskPanel() {
       setTaskLists(data.taskLists || [])
       const fetchedTasks: GoogleTask[] = data.tasks || []
       setTasks(fetchedTasks)
-      // 初回: 最初のリストを選択
-      if (!activeListId && data.taskLists?.length > 0) {
-        setActiveListId(data.taskLists[0].id)
-      }
+      // デフォルトは「全リスト」(activeListId=null)。ユーザーが手動で選んだ時のみ個別リストにフォーカス。
     } catch (err) {
       setError(err instanceof Error ? err.message : 'エラー')
     } finally {
@@ -495,37 +492,63 @@ export default function TaskPanel() {
           </select>
         </div>
 
-        {/* タブバー */}
-        {taskLists.length > 1 && (
+        {/* タブバー（「全リスト」+ 各リスト。リスト名はオーナー付き表示） */}
+        {taskLists.length > 0 && (
           <div
             ref={tabsRef}
             className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {taskLists.map(list => {
-              const listPending = tasks.filter(t => t.taskListId === list.id && t.status === 'needsAction').length
-              const isActive = activeListId === list.id
-              return (
-                <button
-                  key={list.id}
-                  onClick={() => { setActiveListId(list.id); setExpandedId(null) }}
-                  className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-                    isActive
-                      ? 'border-blue-500 text-blue-600 bg-white'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {list.title}
-                  {listPending > 0 && (
-                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
-                      isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
-                    }`}>
-                      {listPending}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+            {/* 「全リスト」タブ */}
+            <button
+              onClick={() => { setActiveListId(null); setExpandedId(null) }}
+              className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                activeListId === null
+                  ? 'border-blue-500 text-blue-600 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              📋 全リスト
+              {ownerFiltered.filter(t => t.status === 'needsAction').length > 0 && (
+                <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeListId === null ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
+                }`}>
+                  {ownerFiltered.filter(t => t.status === 'needsAction').length}
+                </span>
+              )}
+            </button>
+            {taskLists
+              // フィルター適用中のオーナー以外のリストは隠す
+              .filter(list => {
+                if (ownerFilter === 'all') return true
+                if (ownerFilter === 'mine') return list.ownerEmail === myEmail
+                return list.ownerEmail === ownerFilter
+              })
+              .map(list => {
+                const listPending = ownerFiltered.filter(t => t.taskListId === list.id && t.status === 'needsAction').length
+                const isActive = activeListId === list.id
+                const ownerLabel = list.ownerName ? `${list.ownerName} / ` : ''
+                return (
+                  <button
+                    key={list.id}
+                    onClick={() => { setActiveListId(list.id); setExpandedId(null) }}
+                    className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                      isActive
+                        ? 'border-blue-500 text-blue-600 bg-white'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="opacity-70">{ownerLabel}</span>{list.title}
+                    {listPending > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                        isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {listPending}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
           </div>
         )}
 
