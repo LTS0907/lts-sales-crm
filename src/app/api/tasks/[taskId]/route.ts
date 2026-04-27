@@ -1,32 +1,36 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*    route.ts                                          :::      ::::::::    */
-/*                                                      :+:      :+:    :+:  */
-/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
-/*                                                    +#+#+#+#+#+   +#+       */
-/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
-/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
-/*                                                                            */
-/*    © Life Time Support Inc.                                           */
-/*                                                                            */
-/* ************************************************************************** */
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { getTasksClient, getOrCreateCrmTaskList } from '@/lib/google-tasks'
+import {
+  getTasksClientForUser,
+  getOrCreateCrmTaskListForUser,
+  getTeamTaskUsers,
+} from '@/lib/google-tasks-sa'
 import { clearCached, tokenKey } from '@/lib/tasks-cache'
 
-function invalidateCache(accessToken: string) {
-  clearCached(tokenKey(accessToken))
+const CACHE_KEY_TEAM = 'team-tasks'
+
+function invalidateCache() {
+  clearCached(tokenKey(CACHE_KEY_TEAM))
 }
 
-// PATCH /api/tasks/[taskId] — 削除→再作成で確実にGoogle同期
+function resolveOwner(req: NextRequest, body?: { ownerEmail?: string }, sessionEmail?: string): string {
+  // 優先順: body.ownerEmail > query.ownerEmail > session.user.email
+  const fromBody = body?.ownerEmail
+  const fromQuery = req.nextUrl.searchParams.get('ownerEmail')
+  const owner = fromBody || fromQuery || sessionEmail
+  if (!owner) throw new Error('ownerEmail is required')
+  return owner
+}
+
+// PATCH /api/tasks/[taskId]
+// body: { ownerEmail?, taskListId?, status?, title?, notes?, due? }
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -34,8 +38,17 @@ export async function PATCH(
   const body = await req.json()
 
   try {
-    const client = getTasksClient(session.accessToken)
-    const taskListId = body.taskListId || await getOrCreateCrmTaskList(client)
+    const ownerEmail = resolveOwner(req, body, session.user.email)
+    const teamUsers = getTeamTaskUsers()
+    if (!teamUsers.includes(ownerEmail)) {
+      return NextResponse.json(
+        { error: `${ownerEmail} はチームのタスク管理対象ではありません` },
+        { status: 400 }
+      )
+    }
+
+    const client = await getTasksClientForUser(ownerEmail)
+    const taskListId = body.taskListId || await getOrCreateCrmTaskListForUser(ownerEmail)
 
     // 現在のタスクを取得
     const current = await client.tasks.get({ tasklist: taskListId, task: taskId })
@@ -43,7 +56,7 @@ export async function PATCH(
 
     // 完了/未完了トグルのみ
     if (body.status && !body.title && body.notes === undefined && body.due === undefined) {
-      const statusBody: any = { id: c.id, status: body.status }
+      const statusBody: { id?: string | null; status: string; completed?: string } = { id: c.id, status: body.status }
       if (body.status === 'completed') {
         statusBody.completed = new Date().toISOString()
       }
@@ -52,7 +65,7 @@ export async function PATCH(
         task: taskId,
         requestBody: statusBody,
       })
-      invalidateCache(session.accessToken as string)
+      invalidateCache()
       return NextResponse.json({
         id: updated.data.id,
         title: updated.data.title,
@@ -67,7 +80,7 @@ export async function PATCH(
     // 編集: 旧タスク削除 → 新タスク作成
     await client.tasks.delete({ tasklist: taskListId, task: taskId })
 
-    const newTask: any = {
+    const newTask: { title?: string | null; notes?: string | null; status: string; due?: string; completed?: string } = {
       title: body.title !== undefined ? body.title : c.title,
       notes: body.notes !== undefined ? body.notes : (c.notes || undefined),
       status: body.status || c.status || 'needsAction',
@@ -86,7 +99,7 @@ export async function PATCH(
       requestBody: newTask,
     })
 
-    invalidateCache(session.accessToken as string)
+    invalidateCache()
 
     return NextResponse.json({
       id: created.data.id,
@@ -97,22 +110,22 @@ export async function PATCH(
       completed: created.data.completed,
       updated: created.data.updated,
     })
-  } catch (err: any) {
-    console.error('Tasks PATCH error:', err?.response?.data || err.message || err)
+  } catch (err: unknown) {
+    console.error('Tasks PATCH error:', (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.data || (err as Error).message || err)
     return NextResponse.json(
-      { error: err?.response?.data?.error?.message || err.message || 'タスク更新に失敗' },
-      { status: err?.response?.status || 500 }
+      { error: (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.data?.error?.message || (err as Error).message || 'タスク更新に失敗' },
+      { status: (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.status || 500 }
     )
   }
 }
 
-// DELETE /api/tasks/[taskId]
+// DELETE /api/tasks/[taskId]?taskListId=xxx&ownerEmail=xxx
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -120,19 +133,28 @@ export async function DELETE(
   const taskListId = req.nextUrl.searchParams.get('taskListId')
 
   try {
-    const client = getTasksClient(session.accessToken)
-    const resolvedListId = taskListId || await getOrCreateCrmTaskList(client)
+    const ownerEmail = resolveOwner(req, undefined, session.user.email)
+    const teamUsers = getTeamTaskUsers()
+    if (!teamUsers.includes(ownerEmail)) {
+      return NextResponse.json(
+        { error: `${ownerEmail} はチームのタスク管理対象ではありません` },
+        { status: 400 }
+      )
+    }
+
+    const client = await getTasksClientForUser(ownerEmail)
+    const resolvedListId = taskListId || await getOrCreateCrmTaskListForUser(ownerEmail)
 
     await client.tasks.delete({ tasklist: resolvedListId, task: taskId })
 
-    invalidateCache(session.accessToken as string)
+    invalidateCache()
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    console.error('Tasks DELETE error:', err?.response?.data || err.message || err)
+  } catch (err: unknown) {
+    console.error('Tasks DELETE error:', (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.data || (err as Error).message || err)
     return NextResponse.json(
-      { error: err?.response?.data?.error?.message || err.message || 'タスク削除に失敗' },
-      { status: err?.response?.status || 500 }
+      { error: (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.data?.error?.message || (err as Error).message || 'タスク削除に失敗' },
+      { status: (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response?.status || 500 }
     )
   }
 }

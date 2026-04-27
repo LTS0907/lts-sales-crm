@@ -1,20 +1,14 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*    route.ts                                          :::      ::::::::    */
-/*                                                      :+:      :+:    :+:  */
-/*    By: Claude (LTS)                                  #+#  +:+       +#+    */
-/*                                                    +#+#+#+#+#+   +#+       */
-/*    Created: 2026/03/26 10:44 by Claude (LTS)       #+#    #+#         */
-/*    Updated: 2026/03/26 10:44 by Claude (LTS)       ###   ########      */
-/*                                                                            */
-/*    © Life Time Support Inc.                                           */
-/*                                                                            */
-/* ************************************************************************** */
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
-import { getTasksClient, getOrCreateCrmTaskList, getAllTaskLists } from '@/lib/google-tasks'
+import {
+  getTasksClientForUser,
+  listTaskListsForUser,
+  getOrCreateCrmTaskListForUser,
+  getTeamTaskUsers,
+  getTaskOwnerName,
+} from '@/lib/google-tasks-sa'
 import {
   TasksPayload,
   tokenKey,
@@ -26,17 +20,17 @@ import {
   startQuotaBackoff,
 } from '@/lib/tasks-cache'
 
-// GET /api/tasks — 全Google Tasksリストのタスクを返す（キャッシュ + 429バックオフ付き）
+const CACHE_KEY_TEAM = 'team-tasks'
+
+// GET /api/tasks — 全メンバーのGoogle Tasksを集約して返す（キャッシュ + 429バックオフ付き）
 export async function GET() {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const accessToken = session.accessToken as string
-  const cacheKey = tokenKey(accessToken)
-
-  // 1. ホットキャッシュ命中なら即返却
+  // 1. ホットキャッシュ命中なら即返却（チーム全員分は同じデータなので共有キーでOK）
+  const cacheKey = tokenKey(CACHE_KEY_TEAM)
   const fresh = getCached(cacheKey)
   if (fresh) {
     return NextResponse.json(fresh, {
@@ -62,49 +56,73 @@ export async function GET() {
     )
   }
 
-  try {
-    const client = getTasksClient(accessToken)
-    const taskLists = await getAllTaskLists(client)
+  const teamUsers = getTeamTaskUsers()
 
-    const allTasks = await Promise.all(
-      taskLists.map(async (list) => {
-        const res = await client.tasks.list({
-          tasklist: list.id,
-          maxResults: 100,
-          showCompleted: true,
-          showHidden: true,
-        })
-        return (res.data.items || []).map(t => ({
-          id: t.id,
-          title: t.title,
-          notes: t.notes,
-          status: t.status,
-          due: t.due,
-          completed: t.completed,
-          updated: t.updated,
-          position: t.position,
-          taskListId: list.id,
-          taskListTitle: list.title,
-        }))
+  try {
+    // 各メンバーごとに並列でタスクを取得
+    const perUser = await Promise.all(
+      teamUsers.map(async (userEmail) => {
+        try {
+          const client = await getTasksClientForUser(userEmail)
+          const taskLists = await listTaskListsForUser(userEmail)
+
+          const lists = await Promise.all(
+            taskLists.map(async (list) => {
+              const res = await client.tasks.list({
+                tasklist: list.id,
+                maxResults: 100,
+                showCompleted: true,
+                showHidden: true,
+              })
+              return (res.data.items || []).map(t => ({
+                id: t.id,
+                title: t.title,
+                notes: t.notes,
+                status: t.status,
+                due: t.due,
+                completed: t.completed,
+                updated: t.updated,
+                position: t.position,
+                taskListId: list.id,
+                taskListTitle: list.title,
+                ownerEmail: userEmail,
+                ownerName: getTaskOwnerName(userEmail),
+              }))
+            })
+          )
+
+          return {
+            userEmail,
+            ownerName: getTaskOwnerName(userEmail),
+            taskLists: taskLists.map(l => ({
+              id: l.id,
+              title: l.title,
+              ownerEmail: userEmail,
+              ownerName: getTaskOwnerName(userEmail),
+            })),
+            tasks: lists.flat(),
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e)
+          console.error(`[tasks] failed for ${userEmail}:`, msg)
+          return { userEmail, ownerName: getTaskOwnerName(userEmail), taskLists: [], tasks: [], error: msg }
+        }
       })
     )
 
     const payload: TasksPayload = {
-      taskLists: taskLists.map(l => ({ id: l.id!, title: l.title! })),
-      tasks: allTasks.flat(),
+      taskLists: perUser.flatMap(u => u.taskLists),
+      tasks: perUser.flatMap(u => u.tasks),
     }
     setCached(cacheKey, payload)
 
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': 'private, max-age=30' },
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Tasks GET error:', err)
-    if (err.message?.includes('insufficient') || err.code === 403) {
-      return NextResponse.json({ error: 'Google Tasksの権限がありません。ログアウトして再ログインしてください。' }, { status: 403 })
-    }
-    const msg = String(err?.message || '')
-    if (msg.includes('Quota exceeded') || err?.code === 429) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Quota exceeded') || (err as { code?: number })?.code === 429) {
       startQuotaBackoff(cacheKey)
       const stale = getStale(cacheKey)
       if (stale) {
@@ -115,33 +133,56 @@ export async function GET() {
       return NextResponse.json(
         {
           error:
-            'Google Tasks APIの1日あたりリクエスト上限に達しました。明日には自動的に復旧します。お急ぎの場合は管理者がGoogle Cloudコンソールでクォータ増を申請できます。',
+            'Google Tasks APIの1日あたりリクエスト上限に達しました。明日には自動的に復旧します。',
           tasks: [],
           taskLists: [],
         },
         { status: 429 }
       )
     }
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    if (msg.includes('unauthorized_client') || msg.includes('insufficient')) {
+      return NextResponse.json(
+        {
+          error:
+            'Google Workspace のドメインワイド委譲に Tasks スコープ未設定の可能性があります。管理者に連絡してください。',
+          tasks: [],
+          taskLists: [],
+        },
+        { status: 403 }
+      )
+    }
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }
 
 // POST /api/tasks
+// body: { contactId?, title, notes?, due?, presetLabel?, ownerEmail? }
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { contactId, title, notes, due, presetLabel } = await req.json()
+  const body = await req.json()
+  const { contactId, title, notes, due, presetLabel, ownerEmail } = body
 
   if (!title) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 })
   }
 
+  // 作成先のメンバーを決定（指定がなければ自分）
+  const targetUser = (ownerEmail || session.user.email) as string
+  const teamUsers = getTeamTaskUsers()
+  if (!teamUsers.includes(targetUser)) {
+    return NextResponse.json(
+      { error: `${targetUser} はチームのタスク管理対象ではありません` },
+      { status: 400 }
+    )
+  }
+
   try {
-    const client = getTasksClient(session.accessToken)
-    const taskListId = await getOrCreateCrmTaskList(client)
+    const client = await getTasksClientForUser(targetUser)
+    const taskListId = await getOrCreateCrmTaskListForUser(targetUser)
 
     // Build notes with contact info if contactId provided
     let taskNotes = notes || ''
@@ -159,7 +200,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const requestBody: any = {
+    const requestBody: { title: string; notes?: string; status: string; due?: string } = {
       title,
       notes: taskNotes || undefined,
       status: 'needsAction',
@@ -173,8 +214,8 @@ export async function POST(req: NextRequest) {
       requestBody,
     })
 
-    // 変更があったのでこのユーザーのキャッシュを破棄
-    clearCached(tokenKey(session.accessToken as string))
+    // チーム全体キャッシュを破棄
+    clearCached(tokenKey(CACHE_KEY_TEAM))
 
     // Save link if contactId provided
     if (contactId) {
@@ -195,12 +236,11 @@ export async function POST(req: NextRequest) {
       status: created.data.status,
       due: created.data.due,
       notes: created.data.notes,
+      ownerEmail: targetUser,
+      ownerName: getTaskOwnerName(targetUser),
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Tasks POST error:', err)
-    if (err.message?.includes('insufficient') || err.code === 403) {
-      return NextResponse.json({ error: 'Google Tasksの権限がありません。ログアウトして再ログインしてください。' }, { status: 403 })
-    }
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }

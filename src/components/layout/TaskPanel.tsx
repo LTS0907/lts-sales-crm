@@ -20,6 +20,8 @@ import { CSS } from '@dnd-kit/utilities'
 interface TaskList {
   id: string
   title: string
+  ownerEmail?: string
+  ownerName?: string
 }
 
 interface GoogleTask {
@@ -33,6 +35,18 @@ interface GoogleTask {
   position?: string
   taskListId?: string
   taskListTitle?: string
+  ownerEmail?: string
+  ownerName?: string
+}
+
+const OWNER_BADGE_COLORS: Record<string, string> = {
+  'ryouchiku@life-time-support.com': 'bg-blue-100 text-blue-700 border-blue-200',
+  'r.kabashima@life-time-support.com': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+}
+
+function ownerBadgeClass(email?: string): string {
+  if (!email) return 'bg-gray-100 text-gray-600 border-gray-200'
+  return OWNER_BADGE_COLORS[email] || 'bg-gray-100 text-gray-600 border-gray-200'
 }
 
 // ドラッグ可能なタスク行
@@ -121,7 +135,14 @@ function SortableTaskRow({
           <p className={`text-sm leading-snug break-words ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
             {task.title}
           </p>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {task.ownerName && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded border leading-tight ${ownerBadgeClass(task.ownerEmail)}`}
+              >
+                {task.ownerName}
+              </span>
+            )}
             {task.due && !isCompleted && (() => {
               const d = formatDue(task.due)
               return d ? <span className={`text-xs ${d.color}`}>{d.text}</span> : null
@@ -206,6 +227,7 @@ export default function TaskPanel() {
   const [editDue, setEditDue] = useState('')
   const [saving, setSaving] = useState(false)
   const [panelWidth, setPanelWidth] = useState(256)
+  const [ownerFilter, setOwnerFilter] = useState<'all' | 'mine' | string>('all')
   const isResizing = useRef(false)
   const tabsRef = useRef<HTMLDivElement>(null)
 
@@ -299,6 +321,7 @@ export default function TaskPanel() {
           notes: editNotes || '',
           due: editDue || null,
           taskListId: task?.taskListId,
+          ownerEmail: task?.ownerEmail,
         }),
       })
       if (!res.ok) {
@@ -324,7 +347,11 @@ export default function TaskPanel() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, taskListId: task?.taskListId }),
+        body: JSON.stringify({
+          status: newStatus,
+          taskListId: task?.taskListId,
+          ownerEmail: task?.ownerEmail,
+        }),
       })
     } catch { fetchTasks() }
   }
@@ -334,7 +361,10 @@ export default function TaskPanel() {
     setTasks(prev => prev.filter(t => t.id !== taskId))
     if (expandedId === taskId) setExpandedId(null)
     try {
-      await fetch(`/api/tasks/${taskId}?taskListId=${task?.taskListId || ''}`, { method: 'DELETE' })
+      const params = new URLSearchParams()
+      if (task?.taskListId) params.set('taskListId', task.taskListId)
+      if (task?.ownerEmail) params.set('ownerEmail', task.ownerEmail)
+      await fetch(`/api/tasks/${taskId}?${params.toString()}`, { method: 'DELETE' })
     } catch { fetchTasks() }
   }
 
@@ -364,6 +394,7 @@ export default function TaskPanel() {
     const previousTaskId = newIndex > 0 ? reordered[newIndex - 1].id : null
 
     try {
+      const movedTask = listTasks.find(t => t.id === movedTaskId)
       await fetch('/api/tasks/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -371,6 +402,7 @@ export default function TaskPanel() {
           taskId: movedTaskId,
           taskListId: activeListId,
           previousTaskId: previousTaskId === movedTaskId ? null : previousTaskId,
+          ownerEmail: movedTask?.ownerEmail,
         }),
       })
     } catch {
@@ -392,18 +424,39 @@ export default function TaskPanel() {
 
   if (!session) return null
 
+  // 担当者フィルター適用
+  const myEmail = session.user?.email
+  const ownerFiltered = tasks.filter(t => {
+    if (ownerFilter === 'all') return true
+    if (ownerFilter === 'mine') return t.ownerEmail === myEmail
+    return t.ownerEmail === ownerFilter
+  })
+
   // 現在選択中リストのタスクをフィルタ
   const currentTasks = activeListId
-    ? tasks.filter(t => t.taskListId === activeListId)
-    : tasks
+    ? ownerFiltered.filter(t => t.taskListId === activeListId)
+    : ownerFiltered
 
   const pending = currentTasks
     .filter(t => t.status === 'needsAction')
     .sort((a, b) => (a.position || '').localeCompare(b.position || ''))
   const completed = currentTasks.filter(t => t.status === 'completed')
 
-  // 全体の未完了数（バッジ用）
-  const totalPending = tasks.filter(t => t.status === 'needsAction').length
+  // 全体の未完了数（バッジ用：フィルター適用後）
+  const totalPending = ownerFiltered.filter(t => t.status === 'needsAction').length
+
+  // 担当者フィルター用の選択肢（実データから動的生成）
+  const ownerOptions: { value: string; label: string }[] = [
+    { value: 'all', label: '全員' },
+    { value: 'mine', label: '自分のみ' },
+    ...Array.from(
+      new Map(
+        tasks
+          .filter(t => t.ownerEmail && t.ownerName)
+          .map(t => [t.ownerEmail!, { value: t.ownerEmail!, label: t.ownerName! }])
+      ).values()
+    ),
+  ]
 
   const panelContent = (
     <div className="overflow-y-scroll h-full" style={{ overscrollBehavior: 'contain' }}>
@@ -427,6 +480,19 @@ export default function TaskPanel() {
             </button>
             <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded">✕</button>
           </div>
+        </div>
+
+        {/* 担当者フィルター */}
+        <div className="px-3 py-1.5 border-b border-gray-100 bg-gray-50">
+          <select
+            value={ownerFilter}
+            onChange={e => { setOwnerFilter(e.target.value); setExpandedId(null) }}
+            className="w-full text-xs px-2 py-1 border border-gray-200 rounded bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {ownerOptions.map(o => (
+              <option key={o.value} value={o.value}>👤 {o.label}</option>
+            ))}
+          </select>
         </div>
 
         {/* タブバー */}

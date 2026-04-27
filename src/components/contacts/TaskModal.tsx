@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { PRESET_TASKS } from '@/lib/task-presets'
 
 interface TaskModalProps {
@@ -10,12 +11,22 @@ interface TaskModalProps {
   onTaskCreated: () => void
 }
 
+const TEAM_TASK_USERS: { email: string; name: string }[] = [
+  { email: 'ryouchiku@life-time-support.com', name: '龍竹' },
+  { email: 'r.kabashima@life-time-support.com', name: '樺嶋' },
+]
+
 export default function TaskModal({ isOpen, onClose, contactId, contactName, onTaskCreated }: TaskModalProps) {
+  const { data: session } = useSession()
+  const myEmail = session?.user?.email
   const [title, setTitle] = useState('')
   const [due, setDue] = useState('')
   const [notes, setNotes] = useState('')
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [ownerEmail, setOwnerEmail] = useState<string>(
+    myEmail && TEAM_TASK_USERS.some(u => u.email === myEmail) ? myEmail : TEAM_TASK_USERS[0].email
+  )
 
   if (!isOpen) return null
 
@@ -44,6 +55,7 @@ export default function TaskModal({ isOpen, onClose, contactId, contactName, onT
           notes: notes || undefined,
           due: due || undefined,
           presetLabel: selectedPreset || undefined,
+          ownerEmail,
         }),
       })
       if (!res.ok) {
@@ -110,6 +122,21 @@ export default function TaskModal({ isOpen, onClose, contactId, contactName, onT
               placeholder="タスク名を入力..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">担当者</label>
+            <select
+              value={ownerEmail}
+              onChange={e => setOwnerEmail(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {TEAM_TASK_USERS.map(u => (
+                <option key={u.email} value={u.email}>
+                  {u.name}{u.email === myEmail ? '（自分）' : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
