@@ -110,6 +110,14 @@ export async function GET() {
       })
     )
 
+    // 各メンバーの取得サマリをログに出力（デバッグ用）
+    for (const u of perUser) {
+      const note = u.tasks.length === 0 && (u as { error?: string }).error
+        ? `0 tasks (error: ${(u as { error?: string }).error})`
+        : `${u.tasks.length} tasks across ${u.taskLists.length} lists`
+      console.log(`[tasks] ${u.userEmail}: ${note}`)
+    }
+
     const payload: TasksPayload = {
       taskLists: perUser.flatMap(u => u.taskLists),
       tasks: perUser.flatMap(u => u.tasks),
