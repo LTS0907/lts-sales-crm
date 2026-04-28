@@ -138,6 +138,68 @@ async function uploadAttachment(params: {
   };
 }
 
+/**
+ * 指定スペース（グループChat）にメッセージ（＋任意で添付）を送信。
+ * env SUPPORT_GROUP_SPACE_ID（または引数 spaceName）で送信先を指定。
+ */
+export async function sendChatToSpace(params: {
+  senderEmail: string;
+  text: string;
+  spaceName?: string;
+  attachment?: {
+    filename: string;
+    contentType: string;
+    data: Buffer;
+  };
+}): Promise<{ success: boolean; messageName?: string; error?: string }> {
+  const { senderEmail, text, attachment } = params;
+  const spaceName = params.spaceName || process.env.SUPPORT_GROUP_SPACE_ID;
+  if (!spaceName) {
+    return {
+      success: false,
+      error: 'SUPPORT_GROUP_SPACE_ID env var が未設定。Google Chat のグループスペースIDを設定してください。',
+    };
+  }
+
+  // spaces/AAQAxxxxxx 形式に正規化
+  const space = spaceName.startsWith('spaces/') ? spaceName : `spaces/${spaceName}`;
+
+  try {
+    const messageBody: Record<string, unknown> = { text };
+
+    if (attachment) {
+      const ref = await uploadAttachment({
+        senderEmail,
+        space,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        data: attachment.data,
+      });
+      messageBody.attachment = [{ attachmentDataRef: ref }];
+    }
+
+    const auth = await getAuthForSender(senderEmail);
+    const token = (await auth.getAccessToken()).token;
+    const url = `https://chat.googleapis.com/v1/${space}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(messageBody),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return { success: false, error: `HTTP ${res.status}: ${err.slice(0, 300)}` };
+    }
+    const data = (await res.json()) as { name?: string };
+    return { success: true, messageName: data.name };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** 指定ユーザーにDMでメッセージ（＋任意で添付ファイル）を送信 */
 export async function sendChatDM(params: {
   senderEmail: string;

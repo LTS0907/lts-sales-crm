@@ -9,10 +9,11 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../../auth/[...nextauth]/route'
-import { sendChatDM } from '@/lib/chat-sender'
+import { sendChatDM, sendChatToSpace } from '@/lib/chat-sender'
 
 const SENDER_EMAIL = 'cs@life-time-support.com'
-const RECIPIENTS = [
+// グループChatスペース未設定時は個別DMにフォールバック
+const FALLBACK_RECIPIENTS = [
   'ryouchiku@life-time-support.com',
   'r.kabashima@life-time-support.com',
 ]
@@ -71,8 +72,26 @@ export async function POST(request: Request) {
     .filter(l => l !== null)
     .join('\n')
 
+  // 1. グループChatスペースが設定されていればそちらに送信（推奨）
+  if (process.env.SUPPORT_GROUP_SPACE_ID) {
+    const r = await sendChatToSpace({
+      senderEmail: SENDER_EMAIL,
+      text: messageText,
+      attachment,
+    })
+    if (!r.success) {
+      console.error('[support] group send failed:', r.error)
+      return NextResponse.json(
+        { error: '送信に失敗しました', details: r.error },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ success: true, mode: 'group', sent: ['group-space'] })
+  }
+
+  // 2. フォールバック: 個別DM
   const results = await Promise.all(
-    RECIPIENTS.map(to =>
+    FALLBACK_RECIPIENTS.map(to =>
       sendChatDM({
         senderEmail: SENDER_EMAIL,
         recipientEmail: to,
@@ -100,6 +119,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
+    mode: 'fallback-dm',
     sent: results.filter(r => r.success).map(r => r.to),
     failed: failed.map(f => ({ to: f.to, error: f.error })),
   })

@@ -59,6 +59,10 @@ function SortableTaskRow({
   onOpenDetail,
   onSaveEdit,
   onCloseDetail,
+  onHandoff,
+  handoffSaving,
+  teamMembers,
+  myEmail,
   editTitle,
   setEditTitle,
   editNotes,
@@ -76,6 +80,10 @@ function SortableTaskRow({
   onOpenDetail: () => void
   onSaveEdit: () => void
   onCloseDetail: () => void
+  onHandoff: (toEmail: string) => void
+  handoffSaving: boolean
+  teamMembers: { email: string; name: string }[]
+  myEmail?: string | null
   editTitle: string
   setEditTitle: (v: string) => void
   editNotes: string
@@ -206,6 +214,31 @@ function SortableTaskRow({
               閉じる
             </button>
           </div>
+
+          {/* 担当者引き渡し */}
+          {teamMembers.length > 1 && (
+            <div className="border-t border-blue-200 pt-2 mt-2">
+              <label className="text-xs text-gray-500 block mb-1">📤 このタスクを渡す</label>
+              <div className="flex flex-wrap gap-1.5">
+                {teamMembers
+                  .filter(m => m.email !== task.ownerEmail)
+                  .map(m => (
+                    <button
+                      key={m.email}
+                      onClick={() => onHandoff(m.email)}
+                      disabled={handoffSaving}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${ownerBadgeClass(m.email)} hover:opacity-80`}
+                    >
+                      {handoffSaving ? '送信中...' : `${m.name} に渡す`}
+                    </button>
+                  ))}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                現担当: {task.ownerName || '?'}
+                {task.ownerEmail === myEmail ? '（自分）' : ''}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -227,7 +260,9 @@ export default function TaskPanel() {
   const [editDue, setEditDue] = useState('')
   const [saving, setSaving] = useState(false)
   const [panelWidth, setPanelWidth] = useState(256)
-  const [ownerFilter, setOwnerFilter] = useState<'all' | 'mine' | string>('all')
+  // デフォルトは自分のメール（'all' で全員表示に切替）
+  const [ownerFilter, setOwnerFilter] = useState<string>(session?.user?.email || 'all')
+  const [handoffSavingId, setHandoffSavingId] = useState<string | null>(null)
   const isResizing = useRef(false)
   const tabsRef = useRef<HTMLDivElement>(null)
 
@@ -353,6 +388,33 @@ export default function TaskPanel() {
     } catch { fetchTasks() }
   }
 
+  const handoffTask = async (task: GoogleTask, toEmail: string) => {
+    if (!task.ownerEmail || task.ownerEmail === toEmail) return
+    if (handoffSavingId) return
+    setHandoffSavingId(task.id)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromEmail: task.ownerEmail,
+          toEmail,
+          taskListId: task.taskListId,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'タスクの引き渡しに失敗しました')
+      }
+      setExpandedId(null)
+      fetchTasks()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'エラー')
+    } finally {
+      setHandoffSavingId(null)
+    }
+  }
+
   const deleteTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId)
     setTasks(prev => prev.filter(t => t.id !== taskId))
@@ -425,7 +487,6 @@ export default function TaskPanel() {
   const myEmail = session.user?.email
   const ownerFiltered = tasks.filter(t => {
     if (ownerFilter === 'all') return true
-    if (ownerFilter === 'mine') return t.ownerEmail === myEmail
     return t.ownerEmail === ownerFilter
   })
 
@@ -443,16 +504,23 @@ export default function TaskPanel() {
   const totalPending = ownerFiltered.filter(t => t.status === 'needsAction').length
 
   // 担当者フィルター用の選択肢（実データから動的生成）
+  // 「自分のみ」は廃止。代わりに各メンバー名で選択（自分のメールに ' (自分)' を付ける）
+  const memberOptions = Array.from(
+    new Map(
+      tasks
+        .filter(t => t.ownerEmail && t.ownerName)
+        .map(t => [
+          t.ownerEmail!,
+          {
+            value: t.ownerEmail!,
+            label: t.ownerEmail === myEmail ? `${t.ownerName!}（自分）` : t.ownerName!,
+          },
+        ])
+    ).values()
+  )
   const ownerOptions: { value: string; label: string }[] = [
     { value: 'all', label: '全員' },
-    { value: 'mine', label: '自分のみ' },
-    ...Array.from(
-      new Map(
-        tasks
-          .filter(t => t.ownerEmail && t.ownerName)
-          .map(t => [t.ownerEmail!, { value: t.ownerEmail!, label: t.ownerName! }])
-      ).values()
-    ),
+    ...memberOptions,
   ]
 
   const panelContent = (
@@ -576,6 +644,10 @@ export default function TaskPanel() {
                     onOpenDetail={() => openDetail(task)}
                     onSaveEdit={() => saveEdit(task.id)}
                     onCloseDetail={() => setExpandedId(null)}
+                    onHandoff={(toEmail) => handoffTask(task, toEmail)}
+                    handoffSaving={handoffSavingId === task.id}
+                    teamMembers={memberOptions.map(o => ({ email: o.value, name: o.label.replace('（自分）', '') }))}
+                    myEmail={myEmail}
                     editTitle={editTitle}
                     setEditTitle={setEditTitle}
                     editNotes={editNotes}
@@ -602,6 +674,10 @@ export default function TaskPanel() {
                     onOpenDetail={() => openDetail(task)}
                     onSaveEdit={() => saveEdit(task.id)}
                     onCloseDetail={() => setExpandedId(null)}
+                    onHandoff={(toEmail) => handoffTask(task, toEmail)}
+                    handoffSaving={handoffSavingId === task.id}
+                    teamMembers={memberOptions.map(o => ({ email: o.value, name: o.label.replace('（自分）', '') }))}
+                    myEmail={myEmail}
                     editTitle={editTitle}
                     setEditTitle={setEditTitle}
                     editNotes={editNotes}

@@ -1,17 +1,12 @@
 'use client'
 
 /**
- * GoogleTasksWidget — トップページ上部に表示するタスクウィジェット
- *
- * 優先度設計:
- *   1. CRMリストのタスク (⭐代わりの優先マーク、上部に太字表示)
- *   2. その他のリストのタスク (下部にグレー表示)
- *
- * 「CRM」というタスクリストがなければ、存在する全リストを同等に扱う。
- * 完了チェックボックスで即マークし、削除・詳細編集は Google Tasks 側に誘導。
+ * GoogleTasksWidget — トップページ上部のタスクウィジェット。
+ * デフォルトで自分のタスクのみ表示。担当者プルダウンで他メンバー or 全員を切り替え可能。
  */
 
 import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 
 interface GTask {
   id: string
@@ -21,6 +16,8 @@ interface GTask {
   due?: string | null
   taskListId: string
   taskListTitle: string
+  ownerEmail?: string
+  ownerName?: string
 }
 
 const CRM_LIST_NAME = 'CRM'
@@ -40,12 +37,15 @@ function dueLabel(due?: string | null): { label: string; color: string } {
 }
 
 export default function GoogleTasksWidget() {
+  const { data: session } = useSession()
+  const myEmail = session?.user?.email
   const [tasks, setTasks] = useState<GTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(true)
-  // 「その他のタスク」は通常時は折りたたみ、見たい時だけ展開する
   const [otherExpanded, setOtherExpanded] = useState(false)
+  // 'me' | 'all' | 'ryouchiku@...' | 'r.kabashima@...'
+  const [ownerFilter, setOwnerFilter] = useState<string>('me')
 
   const load = async () => {
     setLoading(true)
@@ -71,28 +71,33 @@ export default function GoogleTasksWidget() {
 
   const toggleComplete = async (task: GTask) => {
     const newStatus = task.status === 'completed' ? 'needsAction' : 'completed'
-    // Optimistic UI
-    setTasks(prev =>
-      prev.map(t => (t.id === task.id ? { ...t, status: newStatus } : t))
-    )
+    setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, status: newStatus } : t)))
     try {
       await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, taskListId: task.taskListId }),
+        body: JSON.stringify({
+          status: newStatus,
+          taskListId: task.taskListId,
+          ownerEmail: task.ownerEmail,
+        }),
       })
     } catch {
-      // ロールバック
       load()
     }
   }
 
-  // 未完了タスクのみ、CRM優先 → その他 の順
-  const activeTasks = tasks.filter(t => t.status !== 'completed')
+  // 担当者フィルター適用
+  const filteredTasks = tasks.filter(t => {
+    if (ownerFilter === 'all') return true
+    if (ownerFilter === 'me') return t.ownerEmail === myEmail
+    return t.ownerEmail === ownerFilter
+  })
+
+  const activeTasks = filteredTasks.filter(t => t.status !== 'completed')
   const crmTasks = activeTasks.filter(t => t.taskListTitle === CRM_LIST_NAME)
   const otherTasks = activeTasks.filter(t => t.taskListTitle !== CRM_LIST_NAME)
 
-  // 期日昇順ソート（期日なしは最後）
   const sortByDue = (arr: GTask[]) =>
     [...arr].sort((a, b) => {
       if (!a.due && !b.due) return 0
@@ -103,6 +108,19 @@ export default function GoogleTasksWidget() {
 
   const sortedCrm = sortByDue(crmTasks)
   const sortedOther = sortByDue(otherTasks)
+
+  // 担当者プルダウン用の選択肢
+  const ownerOptions: { value: string; label: string }[] = [
+    { value: 'me', label: '自分' },
+    { value: 'all', label: '全員' },
+    ...Array.from(
+      new Map(
+        tasks
+          .filter(t => t.ownerEmail && t.ownerName && t.ownerEmail !== myEmail)
+          .map(t => [t.ownerEmail!, { value: t.ownerEmail!, label: t.ownerName! }])
+      ).values()
+    ),
+  ]
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6 shadow-sm">
@@ -123,12 +141,19 @@ export default function GoogleTasksWidget() {
             {activeTasks.length === 0 && !loading && <span>完了済み ✨</span>}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <select
+            value={ownerFilter}
+            onChange={e => { e.stopPropagation(); setOwnerFilter(e.target.value) }}
+            onClick={e => e.stopPropagation()}
+            className="text-xs px-2 py-1 border border-gray-300 rounded bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          >
+            {ownerOptions.map(o => (
+              <option key={o.value} value={o.value}>👤 {o.label}</option>
+            ))}
+          </select>
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              load()
-            }}
+            onClick={(e) => { e.stopPropagation(); load() }}
             className="text-xs text-gray-500 hover:text-gray-700"
             title="再読込"
           >
@@ -148,12 +173,13 @@ export default function GoogleTasksWidget() {
             <div className="p-5 text-center text-sm text-red-600 bg-red-50">
               ❌ {error}
               <div className="mt-2">
-                <a
-                  href="/api/auth/signin"
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/api/auth/signin' }}
                   className="text-blue-600 underline text-xs"
                 >
                   再ログイン
-                </a>
+                </button>
               </div>
             </div>
           )}
@@ -164,7 +190,6 @@ export default function GoogleTasksWidget() {
             </div>
           )}
 
-          {/* CRM優先タスク（グリッド表示） */}
           {sortedCrm.length > 0 && (
             <div className="bg-gradient-to-r from-yellow-50/30 to-transparent">
               <div className="px-5 py-2 text-xs font-bold text-orange-700 bg-yellow-50/50 border-b border-yellow-100">
@@ -172,13 +197,12 @@ export default function GoogleTasksWidget() {
               </div>
               <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
                 {sortedCrm.map(task => (
-                  <TaskCard key={task.id} task={task} onToggle={toggleComplete} priority />
+                  <TaskCard key={task.id} task={task} onToggle={toggleComplete} priority showOwner={ownerFilter === 'all'} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* その他のタスク（折りたたみ可能、デフォルト非表示） */}
           {sortedOther.length > 0 && (
             <>
               <button
@@ -191,7 +215,7 @@ export default function GoogleTasksWidget() {
               {otherExpanded && (
                 <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
                   {sortedOther.map(task => (
-                    <TaskCard key={task.id} task={task} onToggle={toggleComplete} />
+                    <TaskCard key={task.id} task={task} onToggle={toggleComplete} showOwner={ownerFilter === 'all'} />
                   ))}
                 </div>
               )}
@@ -203,15 +227,16 @@ export default function GoogleTasksWidget() {
   )
 }
 
-// グリッド用のコンパクトなカード。1行に3〜4個並ぶ想定で、タイトルと期日に集中する。
 function TaskCard({
   task,
   onToggle,
   priority = false,
+  showOwner = false,
 }: {
   task: GTask
   onToggle: (t: GTask) => void
   priority?: boolean
+  showOwner?: boolean
 }) {
   const due = dueLabel(task.due)
   const borderColor = priority ? 'border-orange-200' : 'border-gray-200'
@@ -231,12 +256,17 @@ function TaskCard({
         <div className={`text-xs leading-tight ${priority ? 'font-semibold text-gray-900' : 'text-gray-700'} line-clamp-2`}>
           {task.title || '(タイトルなし)'}
         </div>
-        {due.label && (
-          <div className={`text-[10px] mt-1 ${due.color}`}>{due.label}</div>
-        )}
-        {!priority && !due.label && (
-          <div className="text-[10px] mt-1 text-gray-400 truncate">{task.taskListTitle}</div>
-        )}
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {showOwner && task.ownerName && (
+            <span className="text-[10px] px-1 py-0 rounded border border-gray-200 bg-gray-50 text-gray-600">
+              {task.ownerName}
+            </span>
+          )}
+          {due.label && <span className={`text-[10px] ${due.color}`}>{due.label}</span>}
+          {!priority && !due.label && !showOwner && (
+            <span className="text-[10px] text-gray-400 truncate">{task.taskListTitle}</span>
+          )}
+        </div>
       </div>
     </div>
   )
