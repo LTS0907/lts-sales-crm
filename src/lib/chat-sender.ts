@@ -141,18 +141,20 @@ async function uploadAttachment(params: {
 /**
  * 指定スペース（グループChat）にメッセージ（＋任意で添付）を送信。
  * env SUPPORT_GROUP_SPACE_ID（または引数 spaceName）で送信先を指定。
+ * threadName を渡すと既存スレッドへの返信になる。
  */
 export async function sendChatToSpace(params: {
   senderEmail: string;
   text: string;
   spaceName?: string;
+  threadName?: string; // 既存スレッドへの返信用 (例: spaces/AAA/threads/BBB)
   attachment?: {
     filename: string;
     contentType: string;
     data: Buffer;
   };
-}): Promise<{ success: boolean; messageName?: string; error?: string }> {
-  const { senderEmail, text, attachment } = params;
+}): Promise<{ success: boolean; messageName?: string; threadName?: string; error?: string }> {
+  const { senderEmail, text, attachment, threadName } = params;
   const spaceName = params.spaceName || process.env.SUPPORT_GROUP_SPACE_ID;
   if (!spaceName) {
     return {
@@ -178,9 +180,14 @@ export async function sendChatToSpace(params: {
       messageBody.attachment = [{ attachmentDataRef: ref }];
     }
 
+    if (threadName) {
+      messageBody.thread = { name: threadName };
+    }
+
     const auth = await getAuthForSender(senderEmail);
     const token = (await auth.getAccessToken()).token;
-    const url = `https://chat.googleapis.com/v1/${space}/messages`;
+    const queryString = threadName ? '?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD' : '';
+    const url = `https://chat.googleapis.com/v1/${space}/messages${queryString}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -193,8 +200,12 @@ export async function sendChatToSpace(params: {
       const err = await res.text();
       return { success: false, error: `HTTP ${res.status}: ${err.slice(0, 300)}` };
     }
-    const data = (await res.json()) as { name?: string };
-    return { success: true, messageName: data.name };
+    const data = (await res.json()) as { name?: string; thread?: { name?: string } };
+    return {
+      success: true,
+      messageName: data.name,
+      threadName: data.thread?.name,
+    };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
