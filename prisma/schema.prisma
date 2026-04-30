@@ -47,6 +47,8 @@ model Contact {
   owner               String               @default("KAZUI")
   // 顧客からの返信があった最終時刻（mail-bot reply detector が更新）
   lastReplyAt         DateTime?
+  // 名刺の裏面画像URL（cardImageUrl は表面）
+  cardImageBackUrl    String?
   Exchange            Exchange[]
   FollowUpLog         FollowUpLog[]
   GroupMember         GroupMember[]
@@ -58,6 +60,32 @@ model Contact {
   Contract            Contract[]
   AccountsReceivable  AccountsReceivable[]
   Revenue             Revenue[]
+  ContactCardHistory  ContactCardHistory[]
+}
+
+/// 名刺履歴: 同一人物の名刺が更新された時に旧バージョンを記録
+model ContactCardHistory {
+  id              String   @id
+  contactId       String
+  scannedAt       DateTime @default(now())
+  // スキャン時の名刺情報スナップショット
+  name            String?
+  nameKana        String?
+  company         String?
+  department      String?
+  title           String?
+  email           String?
+  phone           String?
+  website         String?
+  address         String?
+  // Drive に保存した画像URL
+  cardImageUrl    String?
+  cardImageBackUrl String?
+  // 何故履歴入りしたかのメモ（"replaced_by_newer" / "manual" 等）
+  reason          String?
+  Contact         Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, scannedAt])
 }
 
 model Exchange {
