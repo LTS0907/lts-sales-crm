@@ -9,7 +9,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const [contact, allContacts] = await Promise.all([
     prisma.contact.findUnique({
       where: { id },
-      include: { Note: { orderBy: { createdAt: 'desc' } }, Exchange: { orderBy: { createdAt: 'desc' } }, MeetingParticipant: { include: { Meeting: true } }, GroupMember: { include: { Group: true } }, ServicePhase: true, Subscription: { include: { BillingRecord: { orderBy: { billingMonth: 'desc' }, take: 3 } }, orderBy: { createdAt: 'desc' } }, AccountsReceivable: { orderBy: [{ status: 'asc' }, { dueDate: 'asc' }] }, Revenue: { select: { fiscalMonth: true, totalAmount: true } } },
+      include: { Note: { orderBy: { createdAt: 'desc' } }, Exchange: { orderBy: { createdAt: 'desc' } }, MeetingParticipant: { include: { Meeting: true } }, GroupMember: { include: { Group: true } }, ServicePhase: true, Subscription: { include: { BillingRecord: { orderBy: { billingMonth: 'desc' }, take: 3 } }, orderBy: { createdAt: 'desc' } }, AccountsReceivable: { orderBy: [{ status: 'asc' }, { dueDate: 'asc' }] }, Revenue: { select: { fiscalMonth: true, totalAmount: true } }, ContactCardHistory: { orderBy: { scannedAt: 'desc' } } },
     }),
     prisma.contact.findMany({ select: { id: true, name: true } }),
   ])

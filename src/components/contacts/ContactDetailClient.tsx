@@ -449,25 +449,104 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
         </div>
       </div>
 
-      {/* Business Card Image */}
-      {contact.cardImageUrl && (
+      {/* Business Card Image (front + back + history) */}
+      {(contact.cardImageUrl || contact.cardImageBackUrl || (contact.ContactCardHistory && contact.ContactCardHistory.length > 0)) && (
         <div className="mb-5">
           <button
             onClick={() => setCardImageOpen(v => !v)}
             className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 mb-2"
           >
             <span>🪪 名刺画像</span>
+            {contact.ContactCardHistory && contact.ContactCardHistory.length > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                履歴 {contact.ContactCardHistory.length}件
+              </span>
+            )}
             <span className="text-xs text-gray-400">{cardImageOpen ? '▲ 閉じる' : '▼ 表示'}</span>
           </button>
           {cardImageOpen && (
-            <div className="relative">
-              <img
-                src={contact.cardImageUrl}
-                alt={`${contact.name}の名刺`}
-                className="max-w-full rounded-xl border border-gray-200 shadow-sm"
-                style={{ maxHeight: '300px', objectFit: 'contain' }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
+            <div className="space-y-3">
+              {/* 現行（最新）の名刺 */}
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-1">現行</p>
+                <div className="flex flex-wrap gap-3">
+                  {contact.cardImageUrl && (
+                    <a href={contact.cardImageUrl} target="_blank" rel="noreferrer" className="block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={contact.cardImageUrl}
+                        alt={`${contact.name}の名刺(表)`}
+                        className="rounded-xl border border-gray-200 shadow-sm"
+                        style={{ maxHeight: '200px', objectFit: 'contain' }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    </a>
+                  )}
+                  {contact.cardImageBackUrl && (
+                    <a href={contact.cardImageBackUrl} target="_blank" rel="noreferrer" className="block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={contact.cardImageBackUrl}
+                        alt={`${contact.name}の名刺(裏)`}
+                        className="rounded-xl border border-gray-200 shadow-sm"
+                        style={{ maxHeight: '200px', objectFit: 'contain' }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* 過去の名刺履歴 */}
+              {contact.ContactCardHistory && contact.ContactCardHistory.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1">📜 過去の名刺</p>
+                  <div className="space-y-3">
+                    {contact.ContactCardHistory.map((h: {
+                      id: string
+                      scannedAt: string | Date
+                      company?: string | null
+                      department?: string | null
+                      title?: string | null
+                      cardImageUrl?: string | null
+                      cardImageBackUrl?: string | null
+                    }) => (
+                      <div key={h.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <p className="text-xs text-gray-500 mb-1">
+                          {new Date(h.scannedAt).toLocaleDateString('ja-JP')} 時点
+                        </p>
+                        <div className="text-sm text-gray-700 mb-2">
+                          {[h.company, h.department, h.title].filter(Boolean).join(' / ') || '(情報なし)'}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {h.cardImageUrl && (
+                            <a href={h.cardImageUrl} target="_blank" rel="noreferrer">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={h.cardImageUrl}
+                                alt="過去の名刺(表)"
+                                className="rounded border border-gray-300"
+                                style={{ maxHeight: '120px', objectFit: 'contain' }}
+                              />
+                            </a>
+                          )}
+                          {h.cardImageBackUrl && (
+                            <a href={h.cardImageBackUrl} target="_blank" rel="noreferrer">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={h.cardImageBackUrl}
+                                alt="過去の名刺(裏)"
+                                className="rounded border border-gray-300"
+                                style={{ maxHeight: '120px', objectFit: 'contain' }}
+                              />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

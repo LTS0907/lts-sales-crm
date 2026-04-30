@@ -19,8 +19,10 @@ interface CardData {
 
 interface ScanResult {
   id: string
-  file: File
+  file: File              // 表面
   previewUrl: string
+  backFile?: File         // 裏面（任意）
+  backPreviewUrl?: string
   status: 'pending' | 'scanning' | 'done' | 'error'
   error?: string
   data: CardData
@@ -116,7 +118,9 @@ export default function BulkScanPage() {
       setResults(prev => prev.map(x => x.id === r.id ? { ...x, status: 'scanning' } : x))
       try {
         const fd = new FormData()
-        fd.append('image', r.file)
+        // 多画像対応: 'images' で複数枚まとめて送信
+        fd.append('images', r.file)
+        if (r.backFile) fd.append('images', r.backFile)
         const res = await fetch('/api/ai/scan-card', { method: 'POST', body: fd })
         const json = await res.json()
         if (!res.ok) throw new Error(json.error || '解析失敗')
@@ -124,8 +128,9 @@ export default function BulkScanPage() {
           ...x, status: 'done',
           data: { ...x.data, ...Object.fromEntries(Object.entries(json).filter(([, v]) => typeof v === 'string' && v !== '')) },
         } : x))
-      } catch (err: any) {
-        setResults(prev => prev.map(x => x.id === r.id ? { ...x, status: 'error', error: err.message } : x))
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'unknown'
+        setResults(prev => prev.map(x => x.id === r.id ? { ...x, status: 'error', error: msg } : x))
       }
       done++
       setProgress(p => ({ ...p, done }))
@@ -152,28 +157,58 @@ export default function BulkScanPage() {
   const removeRow = (id: string) => {
     setResults(prev => {
       const r = prev.find(x => x.id === id)
-      if (r) URL.revokeObjectURL(r.previewUrl)
+      if (r) {
+        URL.revokeObjectURL(r.previewUrl)
+        if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
+      }
       return prev.filter(x => x.id !== id)
     })
   }
 
-  /* ---- 一括保存 ---- */
+  /* ---- 裏面の追加・削除 ---- */
+  const addBackImage = (id: string, file: File) => {
+    if (!file.type.startsWith('image/')) return
+    setResults(prev => prev.map(r => {
+      if (r.id !== id) return r
+      if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
+      return {
+        ...r,
+        backFile: file,
+        backPreviewUrl: URL.createObjectURL(file),
+        // 裏面を追加したら再スキャンが必要
+        status: r.status === 'done' ? 'pending' : r.status,
+      }
+    }))
+  }
+
+  const removeBackImage = (id: string) => {
+    setResults(prev => prev.map(r => {
+      if (r.id !== id) return r
+      if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
+      return { ...r, backFile: undefined, backPreviewUrl: undefined }
+    }))
+  }
+
+  /* ---- 一括保存（multipart で画像も同送） ---- */
   const handleSave = async () => {
     const targets = results.filter(r => r.selected && r.data.name.trim() !== '')
     if (targets.length === 0) return
     setSaving(true)
     try {
-      const res = await fetch('/api/contacts/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contacts: targets.map(r => r.data) }),
-      })
+      const fd = new FormData()
+      const contactsPayload = targets.map(r => ({ ...r.data, id: r.id }))
+      fd.append('contacts', JSON.stringify(contactsPayload))
+      for (const r of targets) {
+        if (r.file) fd.append(`frontImage_${r.id}`, r.file)
+        if (r.backFile) fd.append(`backImage_${r.id}`, r.backFile)
+      }
+      const res = await fetch('/api/contacts/bulk', { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || '保存失敗')
       setSavedCount(json.count)
       setSaved(true)
-    } catch (err: any) {
-      alert('保存中にエラーが発生しました: ' + err.message)
+    } catch (err: unknown) {
+      alert('保存中にエラーが発生しました: ' + (err instanceof Error ? err.message : 'unknown'))
     } finally {
       setSaving(false)
     }
@@ -325,23 +360,53 @@ export default function BulkScanPage() {
                           className="w-4 h-4 accent-blue-600" />
                       </td>
 
-                      {/* サムネイル + ステータス */}
+                      {/* サムネイル + ステータス + 裏面 */}
                       <td className="px-2 py-2 text-center">
-                        <div className="relative inline-block">
-                          <img src={r.previewUrl} alt="" className="w-12 h-9 object-cover rounded border border-gray-200" />
-                          {r.status === 'scanning' && (
-                            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
-                              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <div className="flex items-start gap-1">
+                          <div className="relative">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={r.previewUrl} alt="表面" className="w-12 h-9 object-cover rounded border border-gray-200" title="表面" />
+                            {r.status === 'scanning' && (
+                              <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
+                                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            )}
+                            {r.status === 'error' && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                                <span className="text-white text-xs">!</span>
+                              </div>
+                            )}
+                          </div>
+                          {r.backPreviewUrl ? (
+                            <div className="relative">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={r.backPreviewUrl} alt="裏面" className="w-12 h-9 object-cover rounded border border-gray-200" title="裏面" />
+                              <button
+                                onClick={() => removeBackImage(r.id)}
+                                className="absolute -top-1 -right-1 w-4 h-4 bg-gray-500 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] leading-none"
+                                title="裏面を外す"
+                              >
+                                ×
+                              </button>
                             </div>
-                          )}
-                          {r.status === 'error' && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs">!</span>
-                            </div>
+                          ) : (
+                            <label className="w-12 h-9 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-400 hover:border-blue-400 hover:text-blue-600 cursor-pointer leading-tight" title="裏面を追加">
+                              + 裏面
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={e => {
+                                  const f = e.target.files?.[0]
+                                  if (f) addBackImage(r.id, f)
+                                  e.target.value = ''
+                                }}
+                              />
+                            </label>
                           )}
                         </div>
-                        {r.status === 'error' && <p className="text-xs text-red-500 mt-0.5 max-w-[56px] break-words">失敗</p>}
-                        {r.status === 'pending' && <p className="text-xs text-gray-400 mt-0.5">待機中</p>}
+                        {r.status === 'error' && <p className="text-xs text-red-500 mt-0.5 max-w-[110px] break-words">失敗</p>}
+                        {r.status === 'pending' && <p className="text-xs text-gray-400 mt-0.5">{r.backFile ? '両面待機中' : '待機中'}</p>}
                       </td>
 
                       {/* 氏名 */}
