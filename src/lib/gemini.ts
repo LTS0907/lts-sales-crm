@@ -24,11 +24,23 @@ export async function generateText(prompt: string): Promise<string> {
   return result.response.text()
 }
 
-export async function scanBusinessCard(imageBase64: string, mimeType: string): Promise<Record<string, string>> {
+export async function scanBusinessCard(
+  images: Array<{ base64: string; mimeType: string }> | string,
+  legacyMimeType?: string
+): Promise<Record<string, string>> {
+  // 旧シグネチャ互換: scanBusinessCard(base64, mimeType)
+  const imgs = typeof images === 'string'
+    ? [{ base64: images, mimeType: legacyMimeType || 'image/jpeg' }]
+    : images
+
+  if (imgs.length === 0) throw new Error('画像がありません')
+
   const model = getModel()
-  const result = await model.generateContent([
-    { inlineData: { data: imageBase64, mimeType } },
-    `この名刺画像から情報を読み取り、以下のJSON形式で返してください。読み取れない項目は空文字にしてください。JSONのみを返してください。
+  const isMulti = imgs.length > 1
+  const prompt = isMulti
+    ? `これらは同じ人物の名刺の${imgs.length}面（表面・裏面など）です。すべての画像を統合して、最も情報量が多くなるよう以下のJSON形式で返してください。
+複数の画像で異なる情報があれば併記、同じ情報があれば1つにまとめてください。
+読み取れない項目は空文字にしてください。JSONのみを返してください。
 
 {
   "name": "氏名",
@@ -40,8 +52,25 @@ export async function scanBusinessCard(imageBase64: string, mimeType: string): P
   "phone": "電話番号",
   "website": "ウェブサイト",
   "address": "住所"
-}`,
-  ])
+}`
+    : `この名刺画像から情報を読み取り、以下のJSON形式で返してください。読み取れない項目は空文字にしてください。JSONのみを返してください。
+
+{
+  "name": "氏名",
+  "nameKana": "フリガナ",
+  "company": "会社名",
+  "department": "部署",
+  "title": "役職",
+  "email": "メールアドレス",
+  "phone": "電話番号",
+  "website": "ウェブサイト",
+  "address": "住所"
+}`
+
+  const parts = imgs.map(img => ({
+    inlineData: { data: img.base64, mimeType: img.mimeType },
+  }))
+  const result = await model.generateContent([...parts, prompt])
   const text = result.response.text()
   const match = text.match(/\{[\s\S]*\}/)
   if (!match) throw new Error('JSON not found')
