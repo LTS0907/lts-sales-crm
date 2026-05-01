@@ -78,6 +78,8 @@ export default function BulkScanPage() {
   const [saved, setSaved] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
+  const [pairDragId, setPairDragId] = useState<string | null>(null)
+  const [pairOverId, setPairOverId] = useState<string | null>(null)
 
   /* ---- ファイル追加 ---- */
   const addFiles = (files: File[]) => {
@@ -110,8 +112,8 @@ export default function BulkScanPage() {
     setScanning(true)
     setProgress({ done: 0, total: targets.length })
 
-    // 並列 (最大5並列) で処理
-    const CONCURRENCY = 5
+    // 並列度2に絞る (Gemini API 429 対策。サーバ側でも指数バックオフ実装済み)
+    const CONCURRENCY = 2
     let done = 0
 
     const process = async (r: ScanResult) => {
@@ -187,6 +189,40 @@ export default function BulkScanPage() {
       if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
       return { ...r, backFile: undefined, backPreviewUrl: undefined }
     }))
+  }
+
+  /* ---- ドラッグでペアリング: source の表面を target の裏面にして source を削除 ---- */
+  const pairRows = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    setResults(prev => {
+      const source = prev.find(r => r.id === sourceId)
+      const target = prev.find(r => r.id === targetId)
+      if (!source || !target) return prev
+      // すでに target に裏面がある場合は上書きせず警告（ペアにできない）
+      if (target.backFile) {
+        alert(`「${target.data.name || '無名'}」には既に裏面があります。先に裏面を外してください。`)
+        return prev
+      }
+      // source の preview を引き継ぐ（オブジェクトURL再利用）
+      // source の backFile があれば引き継がない（複雑になるので無視）
+      const updated = prev
+        .map(r => {
+          if (r.id !== targetId) return r
+          // 元の backPreview は無いはずだが念のためrevoke
+          if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
+          return {
+            ...r,
+            backFile: source.file,
+            backPreviewUrl: source.previewUrl,
+            // 裏面を加えたので再スキャン要求
+            status: r.status === 'done' ? 'pending' as const : r.status,
+          }
+        })
+        .filter(r => r.id !== sourceId)
+      // source の backFile があれば破棄（pairされる時に残った裏面は消える）
+      if (source.backPreviewUrl) URL.revokeObjectURL(source.backPreviewUrl)
+      return updated
+    })
   }
 
   /* ---- 一括保存（multipart で画像も同送） ---- */
@@ -279,6 +315,13 @@ export default function BulkScanPage() {
         </div>
       ) : null}
 
+      {/* ヒント: ペアリング方法 */}
+      {results.length > 1 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-900">
+          💡 <strong>両面の名刺は</strong>表面の行を裏面の行にドラッグ&ドロップでペア化できます（または各行の「+ 裏面」ボタンから個別追加もOK）
+        </div>
+      )}
+
       {/* 追加ボタン（結果がある場合） */}
       {results.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
@@ -350,13 +393,45 @@ export default function BulkScanPage() {
               <tbody className="divide-y divide-gray-100">
                 {results.map(r => {
                   const isNameEmpty = r.data.name.trim() === ''
+                  const isDragging = pairDragId === r.id
+                  const isDropTarget = pairOverId === r.id && pairDragId !== r.id
                   return (
-                    <tr key={r.id}
-                      className={`${r.selected ? '' : 'opacity-40'} ${isNameEmpty && r.status === 'done' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}
+                    <tr
+                      key={r.id}
+                      draggable
+                      onDragStart={e => {
+                        setPairDragId(r.id)
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', r.id)
+                      }}
+                      onDragEnd={() => { setPairDragId(null); setPairOverId(null) }}
+                      onDragOver={e => {
+                        if (pairDragId && pairDragId !== r.id) {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                          if (pairOverId !== r.id) setPairOverId(r.id)
+                        }
+                      }}
+                      onDragLeave={() => { if (pairOverId === r.id) setPairOverId(null) }}
+                      onDrop={e => {
+                        e.preventDefault()
+                        const sourceId = e.dataTransfer.getData('text/plain') || pairDragId
+                        if (sourceId && sourceId !== r.id) pairRows(sourceId, r.id)
+                        setPairDragId(null); setPairOverId(null)
+                      }}
+                      className={`cursor-grab active:cursor-grabbing transition-colors ${
+                        isDragging ? 'opacity-30' : ''
+                      } ${
+                        isDropTarget
+                          ? 'bg-blue-100 outline outline-2 outline-blue-400'
+                          : r.selected ? '' : 'opacity-40'
+                      } ${isNameEmpty && r.status === 'done' ? 'bg-yellow-50' : ''} hover:bg-gray-50`}
+                      title="行をドラッグして、別の行にドロップするとペア（表＋裏）にできます"
                     >
                       {/* チェックボックス */}
                       <td className="px-3 py-2 text-center">
                         <input type="checkbox" checked={r.selected} onChange={() => toggleSelect(r.id)}
+                          onClick={e => e.stopPropagation()}
                           className="w-4 h-4 accent-blue-600" />
                       </td>
 

@@ -70,11 +70,29 @@ export async function scanBusinessCard(
   const parts = imgs.map(img => ({
     inlineData: { data: img.base64, mimeType: img.mimeType },
   }))
-  const result = await model.generateContent([...parts, prompt])
-  const text = result.response.text()
-  const match = text.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error('JSON not found')
-  return JSON.parse(match[0])
+
+  // 429 (Resource exhausted) の指数バックオフリトライ
+  const MAX_RETRIES = 4
+  let lastError: unknown
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const result = await model.generateContent([...parts, prompt])
+      const text = result.response.text()
+      const match = text.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('JSON not found')
+      return JSON.parse(match[0])
+    } catch (e) {
+      lastError = e
+      const msg = e instanceof Error ? e.message : String(e)
+      const isRateLimit = /429|Too Many Requests|Resource exhausted|RATE_LIMIT/i.test(msg)
+      if (!isRateLimit || attempt === MAX_RETRIES - 1) throw e
+      // 指数バックオフ: 2s, 4s, 8s + ジッター
+      const delayMs = 2000 * Math.pow(2, attempt) + Math.random() * 500
+      console.log(`[gemini] rate-limited, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delayMs)}ms`)
+      await new Promise(r => setTimeout(r, delayMs))
+    }
+  }
+  throw lastError
 }
 
 export async function summarizeCompany(companyName: string, websiteText: string): Promise<string> {
