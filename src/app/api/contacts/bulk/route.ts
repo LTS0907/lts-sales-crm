@@ -34,6 +34,7 @@ interface ContactInput {
   website?: string
   address?: string
   episodeMemo?: string
+  owner?: 'KAZUI' | 'KABASHIMA' | 'SHARED'
 }
 
 function normalize(s: string | null | undefined): string {
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
           address: data.address || dup.address,
           cardImageUrl: frontUrl || dup.cardImageUrl,
           cardImageBackUrl: backUrl || dup.cardImageBackUrl,
+          ...(data.owner ? { owner: data.owner } : {}),
         },
       })
       created.push({ id: updated.id, name: updated.name, mode: 'updated' })
@@ -196,6 +198,7 @@ export async function POST(request: NextRequest) {
           episodeMemo: data.episodeMemo || null,
           cardImageUrl: frontUrl,
           cardImageBackUrl: backUrl,
+          owner: data.owner || 'KAZUI',
         },
       })
       created.push({ id: contact.id, name: contact.name, mode: 'created' })

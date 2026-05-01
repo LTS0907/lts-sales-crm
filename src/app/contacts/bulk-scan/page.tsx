@@ -1,7 +1,21 @@
 'use client'
 import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+
+type OwnerKey = 'KAZUI' | 'KABASHIMA' | 'SHARED'
+
+const OWNER_OPTIONS: { value: OwnerKey; label: string; color: string }[] = [
+  { value: 'KAZUI', label: '龍竹', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { value: 'KABASHIMA', label: '樺嶋', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  { value: 'SHARED', label: '共有', color: 'bg-gray-100 text-gray-700 border-gray-300' },
+]
+
+function defaultOwnerForEmail(email: string | null | undefined): OwnerKey {
+  if (email === 'r.kabashima@life-time-support.com') return 'KABASHIMA'
+  return 'KAZUI'
+}
 
 /* ---------- 型 ---------- */
 interface CardData {
@@ -27,6 +41,7 @@ interface ScanResult {
   error?: string
   data: CardData
   selected: boolean
+  owner: OwnerKey         // 担当者: 龍竹 / 樺嶋 / 共有
 }
 
 const EMPTY_DATA = (): Omit<CardData, 'id'> => ({
@@ -68,6 +83,8 @@ function EditableCell({
 /* ---------- メインページ ---------- */
 export default function BulkScanPage() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const myDefaultOwner: OwnerKey = defaultOwnerForEmail(session?.user?.email)
   const dropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -91,8 +108,17 @@ export default function BulkScanPage() {
       status: 'pending',
       data: { id: crypto.randomUUID(), ...EMPTY_DATA() },
       selected: true,
+      owner: myDefaultOwner,
     }))
     setResults(prev => [...prev, ...newResults])
+  }
+
+  /* ---- 担当者更新 ---- */
+  const updateOwner = (id: string, owner: OwnerKey) => {
+    setResults(prev => prev.map(r => r.id === id ? { ...r, owner } : r))
+  }
+  const setAllOwner = (owner: OwnerKey) => {
+    setResults(prev => prev.map(r => r.selected ? { ...r, owner } : r))
   }
 
   /* ---- ドラッグ & ドロップ ---- */
@@ -232,7 +258,7 @@ export default function BulkScanPage() {
     setSaving(true)
     try {
       const fd = new FormData()
-      const contactsPayload = targets.map(r => ({ ...r.data, id: r.id }))
+      const contactsPayload = targets.map(r => ({ ...r.data, id: r.id, owner: r.owner }))
       fd.append('contacts', JSON.stringify(contactsPayload))
       for (const r of targets) {
         if (r.file) fd.append(`frontImage_${r.id}`, r.file)
@@ -322,6 +348,23 @@ export default function BulkScanPage() {
         </div>
       )}
 
+      {/* 担当者一括設定 */}
+      {results.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <span className="text-gray-600">選択中の担当者を一括設定:</span>
+          {OWNER_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setAllOwner(o.value)}
+              className={`px-3 py-1 rounded-lg border text-xs font-medium ${o.color} hover:opacity-80`}
+            >
+              全員 → {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 追加ボタン（結果がある場合） */}
       {results.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
@@ -380,6 +423,7 @@ export default function BulkScanPage() {
                       className="w-4 h-4 accent-blue-600" />
                   </th>
                   <th className="w-14 px-2 py-3 text-center text-xs font-semibold text-gray-500">画像</th>
+                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-500">担当</th>
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">氏名 *</th>
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">フリガナ</th>
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">会社</th>
@@ -482,6 +526,26 @@ export default function BulkScanPage() {
                         </div>
                         {r.status === 'error' && <p className="text-xs text-red-500 mt-0.5 max-w-[110px] break-words">失敗</p>}
                         {r.status === 'pending' && <p className="text-xs text-gray-400 mt-0.5">{r.backFile ? '両面待機中' : '待機中'}</p>}
+                      </td>
+
+                      {/* 担当者 */}
+                      <td className="px-2 py-2 text-center">
+                        <div className="inline-flex flex-col gap-0.5" onClick={e => e.stopPropagation()}>
+                          {OWNER_OPTIONS.map(o => (
+                            <button
+                              key={o.value}
+                              type="button"
+                              onClick={() => updateOwner(r.id, o.value)}
+                              className={`px-2 py-0.5 rounded border text-[10px] font-medium leading-tight transition ${
+                                r.owner === o.value
+                                  ? o.color
+                                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              {o.label}
+                            </button>
+                          ))}
+                        </div>
                       </td>
 
                       {/* 氏名 */}
