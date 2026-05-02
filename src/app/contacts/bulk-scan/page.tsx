@@ -98,19 +98,58 @@ export default function BulkScanPage() {
   const [pairDragId, setPairDragId] = useState<string | null>(null)
   const [pairOverId, setPairOverId] = useState<string | null>(null)
 
-  /* ---- ファイル追加 ---- */
-  const addFiles = (files: File[]) => {
+  /* ---- 画像圧縮 (スマホ高解像度写真をサーバ送信前に圧縮) ---- */
+  const compressImage = async (file: File, maxDim = 1600, quality = 0.85): Promise<File> => {
+    // 既に小さい/画像でない場合はそのまま
+    if (!file.type.startsWith('image/') || file.size < 600 * 1024) return file
+    try {
+      const url = URL.createObjectURL(file)
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image()
+        i.onload = () => resolve(i)
+        i.onerror = () => reject(new Error('image load failed'))
+        i.src = url
+      })
+      const ratio = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight))
+      if (ratio >= 1 && file.size < 2 * 1024 * 1024) {
+        URL.revokeObjectURL(url)
+        return file
+      }
+      const w = Math.max(1, Math.round(img.naturalWidth * ratio))
+      const h = Math.max(1, Math.round(img.naturalHeight * ratio))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas context unavailable')
+      ctx.drawImage(img, 0, 0, w, h)
+      URL.revokeObjectURL(url)
+      const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', quality))
+      if (!blob) return file
+      const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+      return new File([blob], newName, { type: 'image/jpeg' })
+    } catch (e) {
+      console.warn('[compressImage] failed, using original:', e)
+      return file
+    }
+  }
+
+  /* ---- ファイル追加（圧縮しながら順次追加） ---- */
+  const addFiles = async (files: File[]) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/'))
-    const newResults: ScanResult[] = imageFiles.map(file => ({
-      id: crypto.randomUUID(),
-      file,
-      previewUrl: URL.createObjectURL(file),
-      status: 'pending',
-      data: { id: crypto.randomUUID(), ...EMPTY_DATA() },
-      selected: true,
-      owner: myDefaultOwner,
-    }))
-    setResults(prev => [...prev, ...newResults])
+    for (const file of imageFiles) {
+      const compressed = await compressImage(file)
+      const newResult: ScanResult = {
+        id: crypto.randomUUID(),
+        file: compressed,
+        previewUrl: URL.createObjectURL(compressed),
+        status: 'pending',
+        data: { id: crypto.randomUUID(), ...EMPTY_DATA() },
+        selected: true,
+        owner: myDefaultOwner,
+      }
+      setResults(prev => [...prev, newResult])
+    }
   }
 
   /* ---- 担当者更新 ---- */
@@ -194,15 +233,16 @@ export default function BulkScanPage() {
   }
 
   /* ---- 裏面の追加・削除 ---- */
-  const addBackImage = (id: string, file: File) => {
+  const addBackImage = async (id: string, file: File) => {
     if (!file.type.startsWith('image/')) return
+    const compressed = await compressImage(file)
     setResults(prev => prev.map(r => {
       if (r.id !== id) return r
       if (r.backPreviewUrl) URL.revokeObjectURL(r.backPreviewUrl)
       return {
         ...r,
-        backFile: file,
-        backPreviewUrl: URL.createObjectURL(file),
+        backFile: compressed,
+        backPreviewUrl: URL.createObjectURL(compressed),
         // 裏面を追加したら再スキャンが必要
         status: r.status === 'done' ? 'pending' : r.status,
       }
@@ -251,23 +291,54 @@ export default function BulkScanPage() {
     })
   }
 
-  /* ---- 一括保存（multipart で画像も同送） ---- */
+  /**
+   * 一括保存:
+   *   - 4MB/バッチを上限に動的にチャンク分割（Vercel 4.5MB body 制限対策）
+   *   - 各バッチ内では multipart/form-data で送信
+   */
   const handleSave = async () => {
     const targets = results.filter(r => r.selected && r.data.name.trim() !== '')
     if (targets.length === 0) return
     setSaving(true)
     try {
-      const fd = new FormData()
-      const contactsPayload = targets.map(r => ({ ...r.data, id: r.id, owner: r.owner }))
-      fd.append('contacts', JSON.stringify(contactsPayload))
+      // 1バッチあたりのサイズ上限（4MB安全マージン）
+      const MAX_BATCH_BYTES = 4 * 1024 * 1024
+      const batches: typeof targets[] = []
+      let curr: typeof targets = []
+      let currSize = 0
       for (const r of targets) {
-        if (r.file) fd.append(`frontImage_${r.id}`, r.file)
-        if (r.backFile) fd.append(`backImage_${r.id}`, r.backFile)
+        const size = (r.file?.size || 0) + (r.backFile?.size || 0)
+        // 単独で上限超えはそれ単体で1バッチに
+        if (curr.length > 0 && currSize + size > MAX_BATCH_BYTES) {
+          batches.push(curr)
+          curr = []
+          currSize = 0
+        }
+        curr.push(r)
+        currSize += size
       }
-      const res = await fetch('/api/contacts/bulk', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || '保存失敗')
-      setSavedCount(json.count)
+      if (curr.length > 0) batches.push(curr)
+
+      let totalSaved = 0
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i]
+        const fd = new FormData()
+        const contactsPayload = batch.map(r => ({ ...r.data, id: r.id, owner: r.owner }))
+        fd.append('contacts', JSON.stringify(contactsPayload))
+        for (const r of batch) {
+          if (r.file) fd.append(`frontImage_${r.id}`, r.file)
+          if (r.backFile) fd.append(`backImage_${r.id}`, r.backFile)
+        }
+        const res = await fetch('/api/contacts/bulk', { method: 'POST', body: fd })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(
+            `${i + 1}/${batches.length}バッチ目で失敗: ${json.error || `HTTP ${res.status}`}`
+          )
+        }
+        totalSaved += json.count || 0
+      }
+      setSavedCount(totalSaved)
       setSaved(true)
     } catch (err: unknown) {
       alert('保存中にエラーが発生しました: ' + (err instanceof Error ? err.message : 'unknown'))
