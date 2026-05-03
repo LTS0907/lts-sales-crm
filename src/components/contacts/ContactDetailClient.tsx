@@ -12,6 +12,7 @@ import ContactSubscriptionSection from './ContactSubscriptionSection'
 import OwnerSelector from './OwnerSelector'
 import ScheduleMeetingModal from '../meetings/ScheduleMeetingModal'
 import ContactReceivableSection from './ContactReceivableSection'
+import ContactMinutesSection from './ContactMinutesSection'
 
 interface GmailMessage {
   id: string
@@ -90,7 +91,7 @@ function NoteText({ text, contacts }: { text: string; contacts: { id: string; na
 export default function ContactDetailClient({ contact, allContacts }: { contact: any; allContacts: { id: string; name: string }[] }) {
   const router = useRouter()
   const { data: session } = useSession()
-  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'|'drive'|'contracts'|'subscriptions'|'receivables'>('notes')
+  const [tab, setTab] = useState<'notes'|'exchanges'|'crm'|'ai'|'drive'|'contracts'|'subscriptions'|'receivables'|'minutes'>('notes')
   const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([])
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailError, setGmailError] = useState<string | null>(null)
@@ -555,7 +556,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-5">
         <div className="flex gap-0">
-          {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ'],['drive','ドライブ'],['contracts','契約書'],['subscriptions','サブスク'],['receivables','売掛']].map(([key, label]) => (
+          {[['notes','メモ・記録'],['exchanges','やりとり'],['crm','営業CRM'],['ai','AIまとめ'],['drive','ドライブ'],['contracts','契約書'],['subscriptions','サブスク'],['receivables','売掛'],['minutes','議事録']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key as any)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {label}
@@ -1036,6 +1037,11 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
           receivables={contact.AccountsReceivable || []}
           revenues={contact.Revenue || []}
         />
+      )}
+
+      {/* Minutes Tab */}
+      {tab === 'minutes' && (
+        <ContactMinutesSection contactId={contact.id} />
       )}
 
       {/* Email Detail Modal */}
