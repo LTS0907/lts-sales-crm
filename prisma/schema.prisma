@@ -154,6 +154,9 @@ model Meeting {
   syncedAt           DateTime?            // 議事録同期日時
   status             String               @default("SCHEDULED") // SCHEDULED / COMPLETED / CANCELLED
   owner              String               @default("KAZUI")     // 作成者 (KAZUI/KABASHIMA/SHARED)
+  // mail-bot v3 リデザイン A-2/A-3
+  minutesUrl         String?              // 議事録ドキュメントURL（Gemini Notes 生成の Google Drive Doc）
+  assigneeStaffId    String?              // 担当スタッフID（lts-staff-hub の Staff.id・将来連携用・FK制約なし）
   MeetingParticipant MeetingParticipant[]
 
   @@index([date])
