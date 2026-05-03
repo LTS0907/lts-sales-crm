@@ -76,12 +76,25 @@ export async function POST(request: NextRequest) {
       ? contacts.filter(c => c.email).map(c => ({ email: c.email!, displayName: c.name }))
       : []
 
+    // Meeting ID を先に生成 — Calendar Event と DB レコードで同一 ID を共有する
+    const meetingId = crypto.randomUUID()
+
+    // description: 既存文面を維持しつつ末尾に Meeting ID タグを追加
+    const baseDescription = description || `LTS 打ち合わせ\n\n参加者: ${contacts.map(c => c.name).join('、')}`
+    const taggedDescription = `${baseDescription}\n\n[LTS-Meeting:${meetingId}]`
+
     const requestBody: calendar_v3.Schema$Event = {
       summary: title,
-      description: description || `LTS 打ち合わせ\n\n参加者: ${contacts.map(c => c.name).join('、')}`,
+      description: taggedDescription,
       start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Tokyo' },
       end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Tokyo' },
       attendees,
+      // Gemini Notes 議事録メールの逆引き用（人間には見えないメタデータ）
+      extendedProperties: {
+        private: {
+          lts_meeting_id: meetingId,
+        },
+      },
     }
 
     if (isOffline) {
@@ -109,8 +122,7 @@ export async function POST(request: NextRequest) {
         event.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri ||
         null
 
-    // Meeting レコードを DB に保存
-    const meetingId = crypto.randomUUID()
+    // Meeting レコードを DB に保存（事前生成した meetingId を使用）
     const meeting = await prisma.meeting.create({
       data: {
         id: meetingId,
