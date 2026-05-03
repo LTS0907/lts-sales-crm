@@ -15,6 +15,7 @@ interface MeetingRecord {
   meetUrl: string | null
   htmlLink: string | null
   minutesUrl: string | null
+  minutesSummary: string | null
   assigneeStaffId: string | null
   status: string
   owner: string
@@ -41,6 +42,19 @@ export default function ContactMinutesSection({ contactId }: { contactId: string
   const [meetings, setMeetings] = useState<MeetingRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  function toggleExpand(id: string) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     const fetchMeetings = async () => {
@@ -108,10 +122,12 @@ export default function ContactMinutesSection({ contactId }: { contactId: string
       <div className="space-y-3">
         {meetings.map(meeting => {
           const hasMinutes = !!meeting.minutesUrl
+          const hasSummary = !!meeting.minutesSummary
           const isCancelled = meeting.status === 'CANCELLED'
           const isOnline = !!meeting.meetUrl
           const participants = meeting.MeetingParticipant.map(p => p.Contact.name)
           const ownerLabel = OWNER_LABEL[meeting.owner] || meeting.owner
+          const isExpanded = expandedIds.has(meeting.id)
 
           return (
             <div
@@ -225,7 +241,31 @@ export default function ContactMinutesSection({ contactId }: { contactId: string
                     📆 Calendarを開く
                   </a>
                 )}
+                {(hasMinutes || hasSummary) && (
+                  <button
+                    onClick={() => toggleExpand(meeting.id)}
+                    className="inline-flex items-center gap-1 px-3 py-2 border border-gray-200 text-gray-600 text-xs rounded-lg hover:bg-gray-50 min-h-[36px]"
+                  >
+                    {isExpanded ? '▲ 折りたたむ' : '▼ 要約を見る'}
+                  </button>
+                )}
               </div>
+
+              {/* 要約展開パネル */}
+              {isExpanded && (
+                <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <p className="text-xs font-semibold text-gray-700 mb-1">📝 要約</p>
+                  {meeting.minutesSummary ? (
+                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {meeting.minutesSummary}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      要約データなし（議事録メール処理前 または 抽出失敗）
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
