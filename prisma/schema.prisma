@@ -157,6 +157,8 @@ model Meeting {
   // mail-bot v3 リデザイン A-2/A-3
   minutesUrl         String?              // 議事録ドキュメントURL（Gemini Notes 生成の Google Drive Doc）
   assigneeStaffId    String?              // 担当スタッフID（lts-staff-hub の Staff.id・将来連携用・FK制約なし）
+  // mail-bot v3.5 Phase 1
+  minutesSummary     String?              // 議事録要約本文（Gemini Notes メール本文から自動抽出）
   MeetingParticipant MeetingParticipant[]
 
   @@index([date])
