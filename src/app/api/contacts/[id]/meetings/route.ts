@@ -10,7 +10,21 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       },
     },
     orderBy: { date: 'desc' },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      date: true,
+      duration: true,
+      location: true,
+      meetUrl: true,
+      htmlLink: true,
+      minutesUrl: true,
+      minutesSummary: true,
+      minutesActionItems: true,
+      minutesTasksRegisteredAt: true,
+      assigneeStaffId: true,
+      status: true,
+      owner: true,
       MeetingParticipant: {
         include: { Contact: { select: { id: true, name: true } } },
       },
