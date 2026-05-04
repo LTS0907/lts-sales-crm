@@ -174,9 +174,9 @@ export default function EmailSyncPage() {
           </div>
         </div>
       ) : matchData ? (
-        <div className="flex-1 flex gap-6 min-h-0">
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0">
           {/* Contact list */}
-          <div className="w-1/3 bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
+          <div className="w-full lg:w-1/3 bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col max-h-[40vh] lg:max-h-none">
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <div className="font-semibold text-gray-900">
                 マッチした顧客 ({matchData.matchedContacts.length}件)

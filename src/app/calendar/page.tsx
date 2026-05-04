@@ -542,68 +542,72 @@ export default function CalendarPage() {
   return (
     <div className="p-6 h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-900">Googleカレンダー</h1>
-          <span className="text-sm text-gray-500">{session.user?.email}</span>
+      <div className="flex items-center justify-between mb-4 flex-shrink-0 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900 whitespace-nowrap">Googleカレンダー</h1>
+          <span className="hidden sm:inline text-sm text-gray-500 truncate">{session.user?.email}</span>
         </div>
         <button
           onClick={() => signOut()}
-          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
         >
           ログアウト
         </button>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={openCreateModal}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-          >
-            + 予定を作成
-          </button>
-          <button
-            onClick={goToToday}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            今日
-          </button>
-          <button onClick={navigatePrev} className="p-2 hover:bg-gray-100 rounded-lg">←</button>
-          <button onClick={navigateNext} className="p-2 hover:bg-gray-100 rounded-lg">→</button>
-          <h2 className="font-semibold text-gray-900 ml-2">
-            {viewMode === 'day' && format(currentDate, 'yyyy年M月d日（E）', { locale: ja })}
-            {viewMode === 'week' && `${format(weekDays[0], 'yyyy年M月d日', { locale: ja })} - ${format(weekDays[6], 'M月d日', { locale: ja })}`}
-            {viewMode === 'month' && format(currentDate, 'yyyy年M月', { locale: ja })}
-          </h2>
+      <div className="mb-4 flex-shrink-0 space-y-2 sm:space-y-0">
+        {/* 上段: アクション + ナビ + 表示モード */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={openCreateModal}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium whitespace-nowrap"
+            >
+              + 予定を作成
+            </button>
+            <button
+              onClick={goToToday}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              今日
+            </button>
+            <button onClick={navigatePrev} className="p-2 hover:bg-gray-100 rounded-lg">←</button>
+            <button onClick={navigateNext} className="p-2 hover:bg-gray-100 rounded-lg">→</button>
+          </div>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('day')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                viewMode === 'day' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              日
+            </button>
+            <button
+              onClick={() => setViewMode('week')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                viewMode === 'week' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              週
+            </button>
+            <button
+              onClick={() => setViewMode('month')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                viewMode === 'month' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              月
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setViewMode('day')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              viewMode === 'day' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            日
-          </button>
-          <button
-            onClick={() => setViewMode('week')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              viewMode === 'week' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            週
-          </button>
-          <button
-            onClick={() => setViewMode('month')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              viewMode === 'month' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            月
-          </button>
-        </div>
+        {/* 下段: 日付タイトル（独立表示で折り返さない） */}
+        <h2 className="font-semibold text-gray-900 mt-2">
+          {viewMode === 'day' && format(currentDate, 'yyyy年M月d日（E）', { locale: ja })}
+          {viewMode === 'week' && `${format(weekDays[0], 'yyyy年M月d日', { locale: ja })} - ${format(weekDays[6], 'M月d日', { locale: ja })}`}
+          {viewMode === 'month' && format(currentDate, 'yyyy年M月', { locale: ja })}
+        </h2>
       </div>
 
       {error && (
