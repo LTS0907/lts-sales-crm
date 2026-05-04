@@ -42,6 +42,9 @@ interface ScanResult {
   data: CardData
   selected: boolean
   owner: OwnerKey         // 担当者: 龍竹 / 樺嶋 / 共有
+  // 保存ステータス（1件ずつ処理するため、各行が独立した状態を持つ）
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error'
+  saveError?: string
 }
 
 const EMPTY_DATA = (): Omit<CardData, 'id'> => ({
@@ -94,6 +97,7 @@ export default function BulkScanPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [saveProgress, setSaveProgress] = useState({ done: 0, total: 0, errorCount: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [pairDragId, setPairDragId] = useState<string | null>(null)
   const [pairOverId, setPairOverId] = useState<string | null>(null)
@@ -147,6 +151,7 @@ export default function BulkScanPage() {
         data: { id: crypto.randomUUID(), ...EMPTY_DATA() },
         selected: true,
         owner: myDefaultOwner,
+        saveStatus: 'idle',
       }
       setResults(prev => [...prev, newResult])
     }
@@ -291,64 +296,99 @@ export default function BulkScanPage() {
     })
   }
 
+  /** 1件だけ保存 (POST /api/contacts/bulk に1件分のpayloadで送信) */
+  const saveOne = async (r: ScanResult): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const fd = new FormData()
+      fd.append('contacts', JSON.stringify([{ ...r.data, id: r.id, owner: r.owner }]))
+      if (r.file) fd.append(`frontImage_${r.id}`, r.file)
+      if (r.backFile) fd.append(`backImage_${r.id}`, r.backFile)
+      const res = await fetch('/api/contacts/bulk', { method: 'POST', body: fd })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) return { ok: false, error: json.error || `HTTP ${res.status}` }
+      if (typeof json.count === 'number' && json.count === 0) {
+        return { ok: false, error: '保存件数 0 (氏名が空などの可能性)' }
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : '通信エラー' }
+    }
+  }
+
   /**
-   * 一括保存:
-   *   - 4MB/バッチを上限に動的にチャンク分割（Vercel 4.5MB body 制限対策）
-   *   - 各バッチ内では multipart/form-data で送信
+   * 一括保存（1件ずつ順次処理 + per-row 状態管理）
+   * - 1件失敗しても他の処理は続行
+   * - 既に saved の行はスキップ
+   * - 失敗行は saveStatus='error' + saveError でUIに残り、再試行ボタンで再投入できる
    */
   const handleSave = async () => {
-    const targets = results.filter(r => r.selected && r.data.name.trim() !== '')
+    // 対象: 選択中 / 氏名あり / 未保存(saved 以外)
+    const targets = results.filter(
+      r => r.selected && r.data.name.trim() !== '' && r.saveStatus !== 'saved'
+    )
     if (targets.length === 0) return
     setSaving(true)
-    try {
-      // 1バッチあたりのサイズ上限（4MB安全マージン）
-      const MAX_BATCH_BYTES = 4 * 1024 * 1024
-      const batches: typeof targets[] = []
-      let curr: typeof targets = []
-      let currSize = 0
-      for (const r of targets) {
-        const size = (r.file?.size || 0) + (r.backFile?.size || 0)
-        // 単独で上限超えはそれ単体で1バッチに
-        if (curr.length > 0 && currSize + size > MAX_BATCH_BYTES) {
-          batches.push(curr)
-          curr = []
-          currSize = 0
-        }
-        curr.push(r)
-        currSize += size
-      }
-      if (curr.length > 0) batches.push(curr)
+    setSaveProgress({ done: 0, total: targets.length, errorCount: 0 })
+    let done = 0
+    let errorCount = 0
 
-      let totalSaved = 0
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i]
-        const fd = new FormData()
-        const contactsPayload = batch.map(r => ({ ...r.data, id: r.id, owner: r.owner }))
-        fd.append('contacts', JSON.stringify(contactsPayload))
-        for (const r of batch) {
-          if (r.file) fd.append(`frontImage_${r.id}`, r.file)
-          if (r.backFile) fd.append(`backImage_${r.id}`, r.backFile)
-        }
-        const res = await fetch('/api/contacts/bulk', { method: 'POST', body: fd })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          throw new Error(
-            `${i + 1}/${batches.length}バッチ目で失敗: ${json.error || `HTTP ${res.status}`}`
-          )
-        }
-        totalSaved += json.count || 0
+    for (const target of targets) {
+      // 直前に最新版を取得（編集された可能性）
+      const current = (results.find(r => r.id === target.id) || target)
+      setResults(prev => prev.map(x => x.id === current.id ? { ...x, saveStatus: 'saving', saveError: undefined } : x))
+      const result = await saveOne(current)
+      if (result.ok) {
+        setResults(prev => prev.map(x => x.id === current.id ? { ...x, saveStatus: 'saved', saveError: undefined } : x))
+      } else {
+        errorCount++
+        setResults(prev => prev.map(x => x.id === current.id ? { ...x, saveStatus: 'error', saveError: result.error } : x))
       }
-      setSavedCount(totalSaved)
+      done++
+      setSaveProgress({ done, total: targets.length, errorCount })
+    }
+
+    setSaving(false)
+    const successCount = done - errorCount
+    setSavedCount(successCount)
+    if (errorCount === 0) {
+      // 全部成功なら完了画面
       setSaved(true)
-    } catch (err: unknown) {
-      alert('保存中にエラーが発生しました: ' + (err instanceof Error ? err.message : 'unknown'))
-    } finally {
-      setSaving(false)
+    } else {
+      // 一部失敗時はそのままの画面で失敗行を再試行できる
+      alert(`${successCount}件成功 / ${errorCount}件失敗\n失敗した行は赤くマークされています。「↻ 再試行」ボタンで再保存できます。`)
+    }
+  }
+
+  /** 失敗した行だけ再試行（または個別行の再試行ボタンから） */
+  const retrySave = async (id: string) => {
+    const target = results.find(r => r.id === id)
+    if (!target || target.saveStatus === 'saving' || target.saveStatus === 'saved') return
+    setResults(prev => prev.map(x => x.id === id ? { ...x, saveStatus: 'saving', saveError: undefined } : x))
+    const result = await saveOne(target)
+    if (result.ok) {
+      setResults(prev => prev.map(x => x.id === id ? { ...x, saveStatus: 'saved', saveError: undefined } : x))
+    } else {
+      setResults(prev => prev.map(x => x.id === id ? { ...x, saveStatus: 'error', saveError: result.error } : x))
+    }
+  }
+
+  const retryAllFailed = async () => {
+    const failed = results.filter(r => r.saveStatus === 'error')
+    for (const f of failed) {
+      // 順次（並列にすると Drive アップロードがバースト）
+      // eslint-disable-next-line no-await-in-loop
+      await retrySave(f.id)
     }
   }
 
   const selectedCount = results.filter(r => r.selected).length
   const validSelectedCount = results.filter(r => r.selected && r.data.name.trim() !== '').length
+  // 保存対象（選択中+氏名あり+未保存）
+  const pendingSaveCount = results.filter(
+    r => r.selected && r.data.name.trim() !== '' && r.saveStatus !== 'saved'
+  ).length
+  const savedRowCount = results.filter(r => r.saveStatus === 'saved').length
+  const failedRowCount = results.filter(r => r.saveStatus === 'error').length
   const doneCount = results.filter(r => r.status === 'done').length
   const pendingCount = results.filter(r => r.status === 'pending').length
 
@@ -502,6 +542,7 @@ export default function BulkScanPage() {
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">役職</th>
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">電話</th>
                   <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500">メール</th>
+                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-500">保存</th>
                   <th className="w-10 px-2 py-3" />
                 </tr>
               </thead>
@@ -651,6 +692,37 @@ export default function BulkScanPage() {
                         <EditableCell value={r.data.email} onChange={v => updateField(r.id, 'email', v)} />
                       </td>
 
+                      {/* 保存ステータス */}
+                      <td className="px-2 py-2 text-center min-w-[80px]">
+                        {r.saveStatus === 'saved' && (
+                          <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                            ✓ 保存済
+                          </span>
+                        )}
+                        {r.saveStatus === 'saving' && (
+                          <span className="inline-flex items-center gap-1 text-blue-600 text-xs">
+                            <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            保存中
+                          </span>
+                        )}
+                        {r.saveStatus === 'error' && (
+                          <div className="flex flex-col items-center gap-1">
+                            <button
+                              onClick={() => retrySave(r.id)}
+                              className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded border border-red-300 hover:bg-red-200"
+                              title={r.saveError || '失敗'}
+                            >
+                              ↻ 再試行
+                            </button>
+                            {r.saveError && (
+                              <span className="text-[10px] text-red-500 max-w-[120px] break-words leading-tight" title={r.saveError}>
+                                {r.saveError.length > 28 ? r.saveError.slice(0, 28) + '…' : r.saveError}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
                       {/* 削除 */}
                       <td className="px-2 py-2 text-center">
                         <button onClick={() => removeRow(r.id)}
@@ -665,21 +737,59 @@ export default function BulkScanPage() {
             </table>
           </div>
 
-          {/* フッター: 保存ボタン */}
-          <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between gap-3">
-            <div className="text-sm text-gray-500">
-              {selectedCount}件選択中
+          {/* 保存進捗バー */}
+          {saving && saveProgress.total > 0 && (
+            <div className="border-t border-gray-200 bg-blue-50/50 px-4 py-2">
+              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                <span>保存中...（1件ずつ処理）</span>
+                <span>
+                  {saveProgress.done} / {saveProgress.total} 件完了
+                  {saveProgress.errorCount > 0 && (
+                    <span className="text-red-600 ml-2">（うち失敗 {saveProgress.errorCount}件）</span>
+                  )}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all"
+                  style={{ width: `${(saveProgress.done / saveProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* フッター: 保存ボタン + 失敗一括再試行 */}
+          <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-sm text-gray-500 flex items-center gap-3 flex-wrap">
+              <span>{selectedCount}件選択中</span>
               {validSelectedCount < selectedCount && (
-                <span className="text-yellow-600 ml-2">（氏名が空の{selectedCount - validSelectedCount}件は保存対象外）</span>
+                <span className="text-yellow-600">（氏名が空の{selectedCount - validSelectedCount}件は保存対象外）</span>
+              )}
+              {savedRowCount > 0 && (
+                <span className="text-green-600">✓ 保存済み {savedRowCount}件</span>
+              )}
+              {failedRowCount > 0 && (
+                <span className="text-red-600">⚠ 失敗 {failedRowCount}件</span>
               )}
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving || validSelectedCount === 0 || scanning}
-              className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? '保存中...' : `${validSelectedCount}件を一括登録`}
-            </button>
+            <div className="flex items-center gap-2">
+              {failedRowCount > 0 && (
+                <button
+                  onClick={retryAllFailed}
+                  disabled={saving || scanning}
+                  className="px-4 py-2 border border-red-300 text-red-700 text-sm font-medium rounded-lg hover:bg-red-50 disabled:opacity-50"
+                >
+                  ↻ 失敗 {failedRowCount}件を再試行
+                </button>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={saving || pendingSaveCount === 0 || scanning}
+                className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? '保存中...' : pendingSaveCount > 0 ? `${pendingSaveCount}件を保存（1件ずつ）` : '保存する対象なし'}
+              </button>
+            </div>
           </div>
         </div>
       )}
