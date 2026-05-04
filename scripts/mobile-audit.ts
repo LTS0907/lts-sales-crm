@@ -122,21 +122,24 @@ async function login() {
 }
 
 async function capture() {
-  if (!fs.existsSync(SESSION_DIR) || fs.readdirSync(SESSION_DIR).length === 0) {
-    console.error('❌ セッションが見つかりません。先に `npx tsx scripts/mobile-audit.ts login` を実行してください')
+  // Cookie ファイルを読み込み
+  const cookiesPath = path.join(OUTPUT_DIR, 'cookies.json')
+  if (!fs.existsSync(cookiesPath)) {
+    console.error('❌ cookies.json が見つかりません。先に `npx tsx scripts/extract-chrome-cookies.ts` を実行してください')
     process.exit(1)
   }
+  const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf-8'))
+  console.log(`🍪 Cookie ${cookies.length}件を読み込みました`)
 
   for (const [deviceName, deviceOpts] of Object.entries(DEVICES)) {
     const outDir = path.join(OUTPUT_DIR, deviceName)
     fs.mkdirSync(outDir, { recursive: true })
 
     console.log(`\n📱 [${deviceName}] 撮影開始`)
-    const ctx = await chromium.launchPersistentContext(SESSION_DIR, {
-      headless: true,
-      ...deviceOpts,
-    })
-    const page = ctx.pages()[0] || (await ctx.newPage())
+    const browser = await chromium.launch({ headless: true })
+    const ctx = await browser.newContext(deviceOpts)
+    await ctx.addCookies(cookies)
+    const page = await ctx.newPage()
 
     for (const pg of PAGES) {
       const url = BASE_URL + pg.path
@@ -162,6 +165,7 @@ async function capture() {
     }
 
     await ctx.close()
+    await browser.close()
   }
 
   console.log('\n🎉 撮影完了！結果は tmp/mobile-audit/ 配下を確認してください')
