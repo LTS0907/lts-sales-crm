@@ -16,8 +16,12 @@ import fs from 'node:fs'
 
 const ROOT = path.resolve(__dirname, '..')
 const SESSION_DIR = path.join(ROOT, 'tmp/mobile-audit/.session')
-const OUTPUT_DIR = path.join(ROOT, 'tmp/mobile-audit')
-const BASE_URL = 'https://lts-sales-crm.vercel.app'
+// 環境変数 OUTPUT_SUBDIR で出力サブディレクトリを切替可能（after撮影用）
+const OUTPUT_DIR = process.env.OUTPUT_SUBDIR
+  ? path.join(ROOT, 'tmp/mobile-audit', process.env.OUTPUT_SUBDIR)
+  : path.join(ROOT, 'tmp/mobile-audit')
+// 環境変数 BASE_URL で撮影対象URL切替可能（preview URL用）
+const BASE_URL = process.env.BASE_URL || 'https://lts-sales-crm.vercel.app'
 
 const PAGES: { path: string; name: string; priority: 'high' | 'mid' | 'low' }[] = [
   { path: '/', name: '01_top', priority: 'high' },
@@ -58,6 +62,12 @@ const DEVICES = {
     hasTouch: true,
     userAgent:
       'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
+  pc: {
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 2,
+    isMobile: false,
+    hasTouch: false,
   },
 } as const
 
