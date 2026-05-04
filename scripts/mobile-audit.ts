@@ -73,22 +73,52 @@ async function login() {
 
   console.log('')
   console.log('👉 ブラウザで Google ログインしてください')
-  console.log('   ログイン完了後、自動でブラウザが閉じます')
+  console.log('   ログイン完了 → /contacts に遷移すると自動検出します')
+  console.log('   または、ログイン完了後にブラウザを手動で閉じてもOK')
   console.log('')
 
-  // ログイン後にホスト=本番URLに戻る + path が認証ページ以外になるのを待つ
-  try {
-    await page.waitForFunction(
-      () => location.host === 'lts-sales-crm.vercel.app' && !location.pathname.startsWith('/auth'),
-      { timeout: 5 * 60 * 1000 } // 最大5分待つ
-    )
-    // セッション保存のため少し待つ
-    await page.waitForTimeout(2000)
+  // ブラウザclose と ログイン検出を競争させる
+  const closedPromise = new Promise<string>(resolve => {
+    ctx.on('close', () => resolve('browser_closed'))
+  })
+
+  const loggedInPromise = (async () => {
+    const start = Date.now()
+    while (Date.now() - start < 10 * 60 * 1000) {
+      // 10分上限
+      try {
+        const url = page.url()
+        // 認証関連のURLでなく、本番ドメインに到達 → ログイン後ページとみなす
+        if (url.startsWith(BASE_URL) && !url.includes('/auth') && !url.includes('/api/auth')) {
+          // 連続して2回確認（リダイレクト中ではない）
+          await page.waitForTimeout(3000)
+          const url2 = page.url()
+          if (url2.startsWith(BASE_URL) && !url2.includes('/auth') && !url2.includes('/api/auth')) {
+            return 'login_detected'
+          }
+        }
+      } catch {
+        return 'page_error'
+      }
+      await new Promise(r => setTimeout(r, 1500))
+    }
+    return 'timeout'
+  })()
+
+  const result = await Promise.race([closedPromise, loggedInPromise])
+  console.log(`\n結果: ${result}`)
+
+  if (result === 'login_detected') {
     console.log('✅ ログイン検出！セッションを保存して終了します')
-  } catch (e) {
-    console.log('⚠️  タイムアウトしました。ログインせずに終了します')
+    // セッション保存のため少し待ってから閉じる
+    await page.waitForTimeout(2000).catch(() => {})
+    await ctx.close().catch(() => {})
+  } else if (result === 'browser_closed') {
+    console.log('✅ ブラウザが閉じられました。セッションが保存されていれば次の capture コマンドで使えます')
+  } else {
+    console.log('⚠️  ログイン未検出のまま終了します')
+    await ctx.close().catch(() => {})
   }
-  await ctx.close()
 }
 
 async function capture() {
