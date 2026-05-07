@@ -12,11 +12,14 @@ interface Contact {
   salesPhase: string
 }
 
+// CRM パイプラインのラベルと整合（PipelineBoard.tsx と同じ用語）
 const PHASE_LABELS: Record<string, string> = {
   LEAD: 'リード',
   MAIL_SENT: 'メール送信',
   INTERESTED: '興味あり',
   APPOINTMENT: 'アポ調整',
+  MEETING_DONE: 'アポ完了',
+  PROPOSING: '提案中',
   NEEDS_CONFIRM: 'ニーズ確認',
   PLAN_PROPOSED: '提案済み',
   NEGOTIATING: '商談中',
@@ -24,16 +27,22 @@ const PHASE_LABELS: Record<string, string> = {
   SCHEDULE_CONFIRM: '日程確認',
   LABOR_CONFIRM: '社労士確認',
   QUOTED: '見積提出',
-  CONTRACTED: '契約済',
+  CONTRACTED: '入金待ち',
+  PAID: '入金完了',
   STARTED: '開始済',
   DELIVERED: '納品済',
+  NURTURING: '育成中',
   COMPLETED: '終了',
+  LOST: '失注',
 }
 
 function phaseBadgeClass(phase: string): string {
-  if (['CONTRACTED'].includes(phase)) return 'bg-blue-100 text-blue-700'
-  if (['STARTED', 'DELIVERED'].includes(phase)) return 'bg-green-100 text-green-700'
-  if (['COMPLETED'].includes(phase)) return 'bg-purple-100 text-purple-700'
+  if (phase === 'PAID') return 'bg-emerald-100 text-emerald-700'
+  if (phase === 'CONTRACTED') return 'bg-green-100 text-green-700'
+  if (['STARTED', 'DELIVERED'].includes(phase)) return 'bg-blue-100 text-blue-700'
+  if (phase === 'COMPLETED') return 'bg-purple-100 text-purple-700'
+  if (phase === 'LOST') return 'bg-red-100 text-red-600'
+  if (phase === 'NURTURING') return 'bg-orange-100 text-orange-700'
   return 'bg-gray-100 text-gray-600'
 }
 
