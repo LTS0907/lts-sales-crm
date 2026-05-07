@@ -16,9 +16,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* モバイル用ハンバーガーボタン */}
+      {/* モバイル/iPad用ハンバーガーボタン */}
       <button
-        className="fixed top-3 left-3 z-50 md:hidden bg-white border border-gray-200 rounded-lg p-2 shadow-sm"
+        className="fixed top-3 left-3 z-50 lg:hidden bg-white border border-gray-200 rounded-lg p-2 shadow-sm"
         onClick={() => setSidebarOpen(true)}
         aria-label="メニューを開く"
       >
@@ -27,25 +27,25 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         </svg>
       </button>
 
-      {/* モバイル用オーバーレイ */}
+      {/* モバイル/iPad用オーバーレイ */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* サイドバー（モバイル時はスライドイン、PC時は常時表示） */}
+      {/* サイドバー（〜iPad はスライドイン、PC（≥1024px）は常時表示） */}
       <div className={`
         fixed inset-y-0 left-0 z-50 transition-transform duration-300
-        md:static md:translate-x-0 md:z-auto
+        lg:static lg:translate-x-0 lg:z-auto
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <Sidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
-      {/* メインコンテンツ（モバイルは上部にハンバーガー分のpaddingを追加） */}
-      <main className="flex-1 overflow-auto pt-12 md:pt-0">
+      {/* メインコンテンツ（〜iPad は上部にハンバーガー分のpaddingを追加） */}
+      <main className="flex-1 overflow-auto pt-12 lg:pt-0">
         {children}
       </main>
 

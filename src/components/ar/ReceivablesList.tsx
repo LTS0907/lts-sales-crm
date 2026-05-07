@@ -261,20 +261,20 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
   return (
     <div className="space-y-5">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <p className="text-xs text-gray-500">未収残高</p>
-          <p className="text-2xl font-bold text-blue-700 mt-1">¥{summary.unpaidAmount.toLocaleString()}</p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-700 mt-1 tabular-nums">¥{summary.unpaidAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.unpaidCount}件</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <p className="text-xs text-gray-500">期日超過</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">¥{summary.overdueAmount.toLocaleString()}</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-600 mt-1 tabular-nums">¥{summary.overdueAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.overdueCount}件</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <p className="text-xs text-gray-500">入金済み（累計）</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">¥{summary.paidAmount.toLocaleString()}</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600 mt-1 tabular-nums">¥{summary.paidAmount.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">{summary.paidCount}件</p>
         </div>
       </div>
@@ -418,8 +418,8 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
         </form>
       )}
 
-      {/* List */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* List (PC: テーブル) */}
+      <div className="hidden lg:block bg-white rounded-xl border border-gray-200 overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-500">該当する売掛金はありません</div>
         ) : (
@@ -544,6 +544,130 @@ export default function ReceivablesList({ items: initialItems, contacts }: { ite
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* List (スマホ・iPad: カード) */}
+      <div className="lg:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-500">該当する売掛金はありません</div>
+        ) : (
+          filtered.map(ar => {
+            const meta = STATUS_META[ar.status] || { label: ar.status, color: 'bg-gray-100 text-gray-600' }
+            const remaining = ar.amount - ar.paidAmount
+            return (
+              <div key={ar.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                {/* ヘッダー: 顧客 + 状態 */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <Link href={`/contacts/${ar.contactId}`} className="flex-1 min-w-0 text-blue-600 hover:underline">
+                    <p className="text-sm font-medium truncate">{ar.Contact.company || ar.Contact.name}</p>
+                    {ar.Contact.company && <p className="text-xs text-gray-400 truncate">{ar.Contact.name}</p>}
+                  </Link>
+                  <span className={`flex-shrink-0 inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${meta.color}`}>
+                    {meta.label}
+                  </span>
+                </div>
+
+                {/* 件名 */}
+                <div className="text-sm text-gray-700 mb-2">
+                  {ar.spreadsheetUrl ? (
+                    <a href={ar.spreadsheetUrl} target="_blank" rel="noopener noreferrer"
+                      className="hover:text-blue-600 hover:underline">
+                      {ar.invoiceSubject || ar.serviceName}
+                    </a>
+                  ) : (
+                    ar.invoiceSubject || ar.serviceName
+                  )}
+                </div>
+
+                {/* 金額・入金 */}
+                <div className="grid grid-cols-2 gap-2 mb-2 text-sm">
+                  <div>
+                    <p className="text-[10px] text-gray-500">金額</p>
+                    {editingAmountId === ar.id ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">¥</span>
+                          <input
+                            type="number"
+                            value={editingAmountValue}
+                            onChange={e => setEditingAmountValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleAmountSave(ar.id)
+                              if (e.key === 'Escape') { setEditingAmountId(null); setEditError('') }
+                            }}
+                            autoFocus
+                            className="border border-gray-300 rounded px-2 py-0.5 text-xs w-24"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleAmountSave(ar.id)} className="text-xs text-blue-600">保存</button>
+                          <button onClick={() => { setEditingAmountId(null); setEditError('') }} className="text-xs text-gray-400">取消</button>
+                        </div>
+                        {editError && <p className="text-[10px] text-red-600">{editError}</p>}
+                      </div>
+                    ) : (
+                      <button onClick={() => startEditingAmount(ar)} className="font-medium text-gray-900 tabular-nums hover:underline">
+                        ¥{ar.amount.toLocaleString()}
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">入金済</p>
+                    {ar.paidAmount > 0 ? (
+                      <div>
+                        <p className="text-green-600 tabular-nums">¥{ar.paidAmount.toLocaleString()}</p>
+                        {remaining > 0 && <p className="text-[10px] text-red-500 tabular-nums">残 ¥{remaining.toLocaleString()}</p>}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 日付 */}
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-3">
+                  <div>
+                    <span className="text-[10px]">請求日: </span>
+                    <span>{fmtDate(ar.invoicedAt)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px]">期日: </span>
+                    {editingDueId === ar.id ? (
+                      <div className="flex items-center gap-1 mt-1">
+                        <input type="date" value={editingDueValue}
+                          onChange={e => setEditingDueValue(e.target.value)}
+                          className="border border-gray-300 rounded px-1 py-0.5 text-xs" />
+                        <button onClick={() => handleDueDateSave(ar.id)} className="text-blue-600">保存</button>
+                        <button onClick={() => setEditingDueId(null)} className="text-gray-400">取消</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => startEditingDue(ar)} className="hover:text-blue-600 hover:underline">
+                        {fmtDate(ar.dueDate)}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 操作ボタン */}
+                {ar.status !== 'PAID' && ar.status !== 'WRITTEN_OFF' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleStatusChange(ar, 'PAID')}
+                      className="flex-1 text-xs px-3 py-1.5 border border-green-300 text-green-700 rounded hover:bg-green-50">
+                      入金済に
+                    </button>
+                    <button onClick={() => handleStatusChange(ar, 'WRITTEN_OFF')}
+                      className="flex-1 text-xs px-3 py-1.5 border border-gray-300 text-gray-500 rounded hover:bg-gray-50">
+                      貸倒
+                    </button>
+                  </div>
+                )}
+                {ar.status === 'PAID' && ar.paidAt && (
+                  <p className="text-xs text-gray-400 text-right">入金日: {fmtDate(ar.paidAt)}</p>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

@@ -213,7 +213,7 @@ export default function SupportButton() {
           onClick={openWithAutoCapture}
           disabled={autoCapturing}
           aria-label="サポートに連絡"
-          className="fixed bottom-20 right-4 md:bottom-5 md:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-rose-700 active:scale-95 transition disabled:opacity-70 print:hidden"
+          className="fixed bottom-20 right-4 lg:bottom-5 lg:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-rose-700 active:scale-95 transition disabled:opacity-70 print:hidden"
         >
           <span aria-hidden>{autoCapturing ? '⏳' : '🆘'}</span>
           <span className="hidden sm:inline">{autoCapturing ? '撮影中...' : 'サポート'}</span>

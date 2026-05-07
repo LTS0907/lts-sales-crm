@@ -538,12 +538,12 @@ export default function TaskPanel() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-            <button onClick={() => setCollapsed(true)} className="hidden md:block p-1 text-gray-400 hover:text-gray-600 rounded" title="閉じる">
+            <button onClick={() => setCollapsed(true)} className="hidden lg:block p-1 text-gray-400 hover:text-gray-600 rounded" title="閉じる">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
               </svg>
             </button>
-            <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded">✕</button>
+            <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1 text-gray-400 hover:text-gray-600 rounded">✕</button>
           </div>
         </div>
 
@@ -701,7 +701,7 @@ export default function TaskPanel() {
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className="md:hidden fixed bottom-4 right-4 z-40 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700"
+          className="lg:hidden fixed bottom-4 right-4 z-40 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700"
         >
           <span className="text-lg">✓</span>
           {totalPending > 0 && (
@@ -712,8 +712,8 @@ export default function TaskPanel() {
 
       {mobileOpen && (
         <>
-          <div className="md:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMobileOpen(false)} />
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-xl" style={{ maxHeight: '70vh' }}>
+          <div className="lg:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMobileOpen(false)} />
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-xl" style={{ maxHeight: '70vh' }}>
             {panelContent}
           </div>
         </>
@@ -722,7 +722,7 @@ export default function TaskPanel() {
       {collapsed && (
         <button
           onClick={() => setCollapsed(false)}
-          className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 bg-white border border-r-0 border-gray-200 rounded-l-lg px-1.5 py-3 shadow-sm flex-col items-center gap-1 hover:bg-gray-50"
+          className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 bg-white border border-r-0 border-gray-200 rounded-l-lg px-1.5 py-3 shadow-sm flex-col items-center gap-1 hover:bg-gray-50"
         >
           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
@@ -735,7 +735,7 @@ export default function TaskPanel() {
       )}
 
       {!collapsed && (
-        <div className="hidden md:flex h-screen flex-shrink-0 relative">
+        <div className="hidden lg:flex h-screen flex-shrink-0 relative">
           {/* リサイズハンドル（aside外側に配置） */}
           <div
             onMouseDown={startResize}

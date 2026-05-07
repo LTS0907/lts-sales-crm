@@ -59,69 +59,119 @@ export default async function SubscriptionsPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">顧客</th>
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">サービス</th>
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">種別</th>
-                <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">月額</th>
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">ステータス</th>
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">直近請求</th>
-                <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subscriptions.map(sub => {
-                const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
-                const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
-                const lastBilling = sub.BillingRecord[0]
+        <>
+          {/* PC: テーブル表示 */}
+          <div className="hidden lg:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">顧客</th>
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">サービス</th>
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">種別</th>
+                  <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">月額</th>
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">ステータス</th>
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">直近請求</th>
+                  <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscriptions.map(sub => {
+                  const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
+                  const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
+                  const lastBilling = sub.BillingRecord[0]
 
-                return (
-                  <tr key={sub.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <Link href={`/contacts/${sub.Contact.id}`} className="hover:underline">
-                        <p className="text-sm font-medium text-gray-900">{sub.Contact.name}</p>
-                        {sub.Contact.company && (
-                          <p className="text-xs text-gray-500">{sub.Contact.company}</p>
-                        )}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{sub.serviceName}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
-                        {bt.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                  return (
+                    <tr key={sub.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <Link href={`/contacts/${sub.Contact.id}`} className="hover:underline">
+                          <p className="text-sm font-medium text-gray-900">{sub.Contact.name}</p>
+                          {sub.Contact.company && (
+                            <p className="text-xs text-gray-500">{sub.Contact.company}</p>
+                          )}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{sub.serviceName}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
+                          {bt.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                        {sub.billingType === 'FIXED' && sub.fixedAmount
+                          ? `¥${sub.fixedAmount.toLocaleString()}`
+                          : '—'
+                        }
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>
+                          {st.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {lastBilling ? `${lastBilling.billingMonth} (${lastBilling.status})` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/subscriptions/${sub.id}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          詳細
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* スマホ・iPad: カード表示 */}
+          <div className="lg:hidden space-y-3">
+            {subscriptions.map(sub => {
+              const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
+              const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
+              const lastBilling = sub.BillingRecord[0]
+
+              return (
+                <div key={sub.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <Link href={`/contacts/${sub.Contact.id}`} className="flex-1 min-w-0 hover:underline">
+                      <p className="text-sm font-medium text-gray-900 truncate">{sub.Contact.name}</p>
+                      {sub.Contact.company && (
+                        <p className="text-xs text-gray-500 truncate">{sub.Contact.company}</p>
+                      )}
+                    </Link>
+                    <Link
+                      href={`/subscriptions/${sub.id}`}
+                      className="flex-shrink-0 text-xs text-blue-600 hover:underline"
+                    >
+                      詳細 →
+                    </Link>
+                  </div>
+                  <p className="text-sm text-gray-700 mb-2">{sub.serviceName}</p>
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>
+                      {st.label}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
+                      {bt.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-900">
                       {sub.billingType === 'FIXED' && sub.fixedAmount
-                        ? `¥${sub.fixedAmount.toLocaleString()}`
-                        : '—'
-                      }
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>
-                        {st.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
-                      {lastBilling ? `${lastBilling.billingMonth} (${lastBilling.status})` : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/subscriptions/${sub.id}`}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        詳細
-                      </Link>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                        ? `¥${sub.fixedAmount.toLocaleString()}/月`
+                        : '変動額'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {lastBilling ? `直近: ${lastBilling.billingMonth}` : '請求実績なし'}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )
