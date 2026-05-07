@@ -5,11 +5,8 @@ import SubscriptionForm from '@/components/subscriptions/SubscriptionForm'
 
 export default async function NewSubscriptionPage() {
   const contacts = await prisma.contact.findMany({
-    where: {
-      salesPhase: { in: ['CONTRACTED', 'PAID', 'STARTED'] },
-    },
-    select: { id: true, name: true, company: true, email: true },
-    orderBy: { name: 'asc' },
+    select: { id: true, name: true, company: true, email: true, salesPhase: true },
+    orderBy: [{ company: 'asc' }, { name: 'asc' }],
   })
 
   return (

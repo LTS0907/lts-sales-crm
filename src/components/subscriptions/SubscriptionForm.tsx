@@ -9,6 +9,32 @@ interface Contact {
   name: string
   company: string | null
   email: string | null
+  salesPhase: string
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  LEAD: 'リード',
+  MAIL_SENT: 'メール送信',
+  INTERESTED: '興味あり',
+  APPOINTMENT: 'アポ調整',
+  NEEDS_CONFIRM: 'ニーズ確認',
+  PLAN_PROPOSED: '提案済み',
+  NEGOTIATING: '商談中',
+  SURVEY: 'ヒアリング',
+  SCHEDULE_CONFIRM: '日程確認',
+  LABOR_CONFIRM: '社労士確認',
+  QUOTED: '見積提出',
+  CONTRACTED: '契約済',
+  STARTED: '開始済',
+  DELIVERED: '納品済',
+  COMPLETED: '終了',
+}
+
+function phaseBadgeClass(phase: string): string {
+  if (['CONTRACTED'].includes(phase)) return 'bg-blue-100 text-blue-700'
+  if (['STARTED', 'DELIVERED'].includes(phase)) return 'bg-green-100 text-green-700'
+  if (['COMPLETED'].includes(phase)) return 'bg-purple-100 text-purple-700'
+  return 'bg-gray-100 text-gray-600'
 }
 
 export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) {
@@ -93,8 +119,13 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
         <label className="block text-sm font-medium text-gray-700 mb-1">顧客 *</label>
         {selectedContact ? (
           <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex-1">
-              <p className="text-sm font-medium">{selectedContact.name}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <span className="truncate">{selectedContact.name}</span>
+                <span className={`shrink-0 text-xs px-2 py-0.5 rounded ${phaseBadgeClass(selectedContact.salesPhase)}`}>
+                  {PHASE_LABELS[selectedContact.salesPhase] || selectedContact.salesPhase}
+                </span>
+              </p>
               {selectedContact.company && <p className="text-xs text-gray-500">{selectedContact.company}</p>}
             </div>
             <button type="button" onClick={() => { setSelectedContact(null); setSearch('') }}
@@ -111,15 +142,25 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
             {showDropdown && filteredContacts.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {filteredContacts.slice(0, 20).map(c => (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                {filteredContacts.slice(0, 30).map(c => (
                   <button key={c.id} type="button"
                     onClick={() => { setSelectedContact(c); setShowDropdown(false); setSearch('') }}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
-                    <span className="font-medium">{c.name}</span>
-                    {c.company && <span className="text-gray-500 ml-2">{c.company}</span>}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm flex items-center gap-2">
+                    <span className="flex-1 min-w-0 truncate">
+                      <span className="font-medium">{c.name}</span>
+                      {c.company && <span className="text-gray-500 ml-2">{c.company}</span>}
+                    </span>
+                    <span className={`shrink-0 text-xs px-2 py-0.5 rounded ${phaseBadgeClass(c.salesPhase)}`}>
+                      {PHASE_LABELS[c.salesPhase] || c.salesPhase}
+                    </span>
                   </button>
                 ))}
+              </div>
+            )}
+            {showDropdown && filteredContacts.length === 0 && search && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm text-gray-500">
+                該当する顧客が見つかりません
               </div>
             )}
           </div>
