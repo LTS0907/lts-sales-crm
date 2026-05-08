@@ -83,6 +83,7 @@ export async function GET() {
                 completed: t.completed,
                 updated: t.updated,
                 position: t.position,
+                parent: t.parent ?? null,
                 taskListId: list.id,
                 taskListTitle: list.title,
                 ownerEmail: userEmail,
