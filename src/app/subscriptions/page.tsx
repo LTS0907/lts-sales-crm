@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
+import IssueInvoiceButton from '@/components/subscriptions/IssueInvoiceButton'
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   ACTIVE: { label: '有効', color: 'bg-green-100 text-green-700' },
@@ -122,12 +123,25 @@ export default async function SubscriptionsPage() {
                         {lastBilling ? `${lastBilling.billingMonth} (${lastBilling.status})` : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/subscriptions/${sub.id}`}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          詳細
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          {sub.status === 'ACTIVE' && (
+                            <IssueInvoiceButton
+                              subscriptionId={sub.id}
+                              contactName={sub.Contact.name}
+                              contactCompany={sub.Contact.company}
+                              serviceName={sub.serviceName}
+                              billingType={sub.billingType}
+                              billingCycle={(sub as Record<string, unknown>).billingCycle as string}
+                              fixedAmount={sub.fixedAmount}
+                            />
+                          )}
+                          <Link
+                            href={`/subscriptions/${sub.id}`}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            詳細
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -182,6 +196,19 @@ export default async function SubscriptionsPage() {
                       {lastBilling ? `直近: ${lastBilling.billingMonth}` : '請求実績なし'}
                     </span>
                   </div>
+                  {sub.status === 'ACTIVE' && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                      <IssueInvoiceButton
+                        subscriptionId={sub.id}
+                        contactName={sub.Contact.name}
+                        contactCompany={sub.Contact.company}
+                        serviceName={sub.serviceName}
+                        billingType={sub.billingType}
+                        billingCycle={(sub as Record<string, unknown>).billingCycle as string}
+                        fixedAmount={sub.fixedAmount}
+                      />
+                    </div>
+                  )}
                 </div>
               )
             })}
