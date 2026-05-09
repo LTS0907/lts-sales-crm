@@ -1,14 +1,39 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import OwnerBadge, { type Owner } from './OwnerBadge'
 
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  UNSENT:  { label: '未送信', color: 'bg-gray-100 text-gray-600' },
-  DRAFTED: { label: '下書き', color: 'bg-yellow-100 text-yellow-700' },
-  APPROVED:{ label: '送信許可', color: 'bg-blue-100 text-blue-700' },
-  SENT:    { label: '送信済', color: 'bg-green-100 text-green-700' },
+// --- DB 4値 → UI 2値の変換 ---
+// UI上の「未送信」は DB の UNSENT / DRAFTED / APPROVED すべてを含む
+// UI上の「送信済」は DB の SENT のみ
+
+type DbEmailStatus = 'UNSENT' | 'DRAFTED' | 'APPROVED' | 'SENT'
+type UiEmailStatus = 'UNSENT' | 'SENT'
+type EmailStatusFilter = 'ALL' | UiEmailStatus
+
+// Prisma スキーマの Contact 型（必要フィールドのみ）
+interface Contact {
+  id: string
+  name: string
+  company: string | null
+  title: string | null
+  address: string | null
+  owner: string | null
+  emailStatus: DbEmailStatus | null
+  photoPath: string | null
+  recommendedServices: string | null
+  connectionType: string | null
+  _count?: { Note?: number }
+}
+
+function toUiStatus(dbStatus: DbEmailStatus | null | undefined): UiEmailStatus {
+  return dbStatus === 'SENT' ? 'SENT' : 'UNSENT'
+}
+
+const UI_STATUS_LABEL: Record<UiEmailStatus, { label: string; color: string }> = {
+  UNSENT: { label: '未送信', color: 'bg-gray-100 text-gray-600' },
+  SENT:   { label: '送信済', color: 'bg-green-100 text-green-700' },
 }
 
 const SERVICE_COLORS: Record<string, string> = {
@@ -37,8 +62,8 @@ function extractPrefecture(address: string | null): string {
   return match ? match[1] : 'その他'
 }
 
-function groupContacts(contacts: any[], mode: GroupMode): [string, any[]][] {
-  const map = new Map<string, any[]>()
+function groupContacts(contacts: Contact[], mode: GroupMode): [string, Contact[]][] {
+  const map = new Map<string, Contact[]>()
 
   for (const c of contacts) {
     let keys: string[] = []
@@ -92,13 +117,18 @@ function getScrollContainer(): Element | null {
 
 type OwnerFilter = 'ALL' | Owner
 
-export default function ContactsClient({ contacts }: { contacts: any[] }) {
+export default function ContactsClient({ contacts: initialContacts }: { contacts: Contact[] }) {
+  const [contacts, setContacts] = useState(initialContacts)
   const [mode, setMode] = useState<GroupMode>('company')
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('ALL')
+  const [emailFilter, setEmailFilter] = useState<EmailStatusFilter>('ALL')
 
-  const filteredContacts = ownerFilter === 'ALL'
-    ? contacts
-    : contacts.filter(c => (c.owner || 'KAZUI') === ownerFilter)
+  // フィルタ適用
+  const filteredContacts = contacts.filter(c => {
+    if (ownerFilter !== 'ALL' && (c.owner || 'KAZUI') !== ownerFilter) return false
+    if (emailFilter !== 'ALL' && toUiStatus(c.emailStatus) !== emailFilter) return false
+    return true
+  })
 
   const groups = groupContacts(filteredContacts, mode)
 
@@ -115,6 +145,19 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
     { key: 'KABASHIMA', label: '🌙 樺嶋',    activeClass: 'bg-yellow-500 text-white' },
     { key: 'SHARED',    label: '🤝 共同',    activeClass: 'bg-green-600 text-white' },
   ]
+
+  const emailFilters: { key: EmailStatusFilter; label: string; activeClass: string }[] = [
+    { key: 'ALL',    label: 'すべて',  activeClass: 'bg-gray-700 text-white' },
+    { key: 'UNSENT', label: '未送信',  activeClass: 'bg-gray-600 text-white' },
+    { key: 'SENT',   label: '送信済',  activeClass: 'bg-green-600 text-white' },
+  ]
+
+  // ステータス更新（ContactCard から呼び出す）
+  const handleStatusChange = (id: string, newUiStatus: UiEmailStatus) => {
+    setContacts(prev =>
+      prev.map(c => c.id === id ? { ...c, emailStatus: newUiStatus === 'SENT' ? 'SENT' : 'UNSENT' } : c)
+    )
+  }
 
   // Restore scroll position on mount
   useEffect(() => {
@@ -165,6 +208,29 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
         })}
       </div>
 
+      {/* メールステータスフィルター */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {emailFilters.map(f => {
+          const count = f.key === 'ALL'
+            ? contacts.length
+            : contacts.filter(c => toUiStatus(c.emailStatus) === f.key).length
+          return (
+            <button
+              key={f.key}
+              onClick={() => setEmailFilter(f.key)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                emailFilter === f.key
+                  ? f.activeClass + ' border-transparent'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              {f.label} <span className="opacity-75">({count})</span>
+            </button>
+          )
+        })}
+        <span className="text-xs text-gray-400 self-center ml-1">📧 メールステータス</span>
+      </div>
+
       {/* Group mode selector */}
       <div className="flex gap-2 mb-5 flex-wrap">
         {modes.map(m => (
@@ -195,7 +261,9 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
               </span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {members.map((c: any) => <ContactCard key={c.id} contact={c} />)}
+              {members.map((c: Contact) => (
+                <ContactCard key={c.id} contact={c} onStatusChange={handleStatusChange} />
+              ))}
             </div>
           </div>
         ))}
@@ -204,8 +272,69 @@ export default function ContactsClient({ contacts }: { contacts: any[] }) {
   )
 }
 
-function ContactCard({ contact }: { contact: any }) {
-  const status = STATUS_LABEL[contact.emailStatus] || STATUS_LABEL.UNSENT
+// --- ContactCard ---
+
+interface ContactCardProps {
+  contact: Contact
+  onStatusChange: (id: string, newStatus: UiEmailStatus) => void
+}
+
+function ContactCard({ contact, onStatusChange }: ContactCardProps) {
+  const uiStatus = toUiStatus(contact.emailStatus)
+  const statusInfo = UI_STATUS_LABEL[uiStatus]
+
+  // ドロップダウンの開閉
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setOpen(prev => !prev)
+  }
+
+  const handleSelect = async (e: React.MouseEvent, newUiStatus: UiEmailStatus) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setOpen(false)
+
+    if (newUiStatus === uiStatus) return
+
+    // 楽観的UI更新
+    onStatusChange(contact.id, newUiStatus)
+    setLoading(true)
+
+    const dbStatus = newUiStatus === 'SENT' ? 'SENT' : 'UNSENT'
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailStatus: dbStatus }),
+      })
+      if (!res.ok) {
+        // 失敗時はロールバック
+        onStatusChange(contact.id, uiStatus)
+      }
+    } catch {
+      onStatusChange(contact.id, uiStatus)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <Link href={`/contacts/${contact.id}`}>
       <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
@@ -218,7 +347,31 @@ function ContactCard({ contact }: { contact: any }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-1">
               <h3 className="font-semibold text-gray-900 text-sm truncate">{contact.name}</h3>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${status.color}`}>{status.label}</span>
+
+              {/* メールステータスバッジ（クリックでドロップダウン） */}
+              <div className="relative flex-shrink-0" ref={dropdownRef}>
+                <button
+                  onClick={handleBadgeClick}
+                  className={`text-xs px-1.5 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity ${statusInfo.color} ${loading ? 'opacity-50' : ''}`}
+                >
+                  {statusInfo.label}
+                </button>
+
+                {open && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden min-w-[90px]">
+                    {(Object.entries(UI_STATUS_LABEL) as [UiEmailStatus, { label: string; color: string }][]).map(([key, info]) => (
+                      <button
+                        key={key}
+                        onClick={(e) => handleSelect(e, key)}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-1.5 ${key === uiStatus ? 'font-semibold' : ''}`}
+                      >
+                        <span className={`px-1.5 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
+                        {key === uiStatus && <span className="text-gray-400 ml-auto">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             {contact.title && <p className="text-xs text-gray-500 truncate">{contact.title}</p>}
             {contact.company && <p className="text-xs text-blue-600 truncate">{contact.company}</p>}
@@ -239,7 +392,7 @@ function ContactCard({ contact }: { contact: any }) {
           </div>
         )}
         <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-          {contact._count?.Note > 0 && <span>📝 {contact._count.Note}件</span>}
+          {(contact._count?.Note ?? 0) > 0 && <span>📝 {contact._count?.Note}件</span>}
           {contact.connectionType && CONNECTION_LABELS[contact.connectionType] && (
             <span>{CONNECTION_LABELS[contact.connectionType].icon} {CONNECTION_LABELS[contact.connectionType].label}</span>
           )}
