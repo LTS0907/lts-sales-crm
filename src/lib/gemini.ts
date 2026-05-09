@@ -13,7 +13,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { LTS_PROFILE_PROMPT, formatNotesForPrompt } from '@/lib/lts-context'
 
-function getModel(modelName = 'gemini-2.0-flash') {
+function getModel(modelName = 'gemini-3-flash-preview') {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey || apiKey === 'your-api-key-here') throw new Error('GEMINI_API_KEYが未設定です')
   return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: modelName })
