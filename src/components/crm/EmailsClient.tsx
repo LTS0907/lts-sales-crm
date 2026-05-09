@@ -32,9 +32,6 @@ interface ContactEmail {
   episodeMemo?: string | null
 }
 
-// カード内のエラー状態
-type CardError = { id: string; message: string }
-
 // 処理中状態
 type ProcessingState = {
   generating: Set<string>
@@ -228,7 +225,6 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
 
   // 選択中の各ステータス別リスト
   const selectedContacts = contacts.filter(c => selectedIds.has(c.id))
-  const selectedUnsent = selectedContacts.filter(c => c.emailStatus === 'UNSENT' || c.emailStatus === 'DRAFTED' || c.emailStatus === 'APPROVED')
   const selectedDrafted = selectedContacts.filter(c => c.emailStatus === 'DRAFTED')
   const selectedApproved = selectedContacts.filter(c => c.emailStatus === 'APPROVED')
 
