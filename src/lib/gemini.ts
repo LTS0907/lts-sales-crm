@@ -11,6 +11,7 @@
 /*                                                                            */
 /* ************************************************************************** */
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { LTS_PROFILE_PROMPT, formatNotesForPrompt } from '@/lib/lts-context'
 
 function getModel(modelName = 'gemini-2.0-flash') {
   const apiKey = process.env.GEMINI_API_KEY
@@ -137,14 +138,17 @@ JSON形式:
 export async function generateEmail(
   name: string, company: string | null, department: string | null,
   title: string | null, episodeMemo: string | null, recommendedServices: string | null,
-  additionalInstructions?: string
+  additionalInstructions?: string,
+  notes?: Array<{ content: string; category: string; createdAt: Date }>
 ): Promise<{ subject: string; body: string }> {
   const now = new Date()
   now.setMonth(now.getMonth() + 2)
   const deadlineText = `${now.getMonth() + 1}月末`
   const position = [department, title].filter(Boolean).join(' ') || ''
 
-  const systemPrompt = `あなたは、礼儀正しく、信頼感のあるプロフェッショナルの営業担当者です。
+  const systemPrompt = `${LTS_PROFILE_PROMPT}
+
+あなたは、礼儀正しく、信頼感のあるプロフェッショナルの営業担当者です。
 相手に失礼がなく、かつ誠実さが伝わるビジネスメールを作成してください。
 過度な修飾語や情緒的な表現は避け、ビジネスの文脈で好感を持たれる「落ち着いた丁寧さ」を意識してください。
 読み手にとってストレスがないよう、適度な改行と余白を入れてデザインしてください。`
@@ -153,6 +157,8 @@ export async function generateEmail(
     ? `\n--------------------------------------------------\n【★重要：ユーザーからの追加修正指示】\n以下の指示を最優先して反映してください：\n「${additionalInstructions}」\n--------------------------------------------------\n`
     : ''
 
+  const notesText = formatNotesForPrompt(notes ?? [])
+
   const userPrompt = `以下の情報を基に、お礼メールを作成してください。
 ${additionalInstructionText}
 【相手情報】
@@ -160,6 +166,9 @@ ${additionalInstructionText}
 役職: ${position}
 氏名: ${name}
 エピソードのヒント: ${episodeMemo || '（なし）'}
+
+【メモ・記録】（この顧客との会話履歴・蓄積情報。エピソードトークや提案内容に活かすこと）
+${notesText}
 
 【必須構成とルール】
 [全体ルール]読みやすくするために"。"で必ず改行をすること。
@@ -223,16 +232,23 @@ https://drive.google.com/file/d/17V3UjCSCy9z8prBEPRxkTMskcrFU8PEO/view?usp=shari
 }
 
 export async function refineEmail(
-  subject: string, body: string, instruction: string
+  subject: string, body: string, instruction: string,
+  notes?: Array<{ content: string; category: string; createdAt: Date }>
 ): Promise<{ subject: string; body: string }> {
-  const prompt = `以下のメールを指示に従って修正してください。
+  const notesSection = notes && notes.length > 0
+    ? `\n【メモ・記録】（修正時の参考情報）\n${formatNotesForPrompt(notes)}\n`
+    : ''
+
+  const prompt = `${LTS_PROFILE_PROMPT}
+
+以下のメールを指示に従って修正してください。
 
 --------------------------------------------------
 【★重要：ユーザーからの修正指示】
 以下の指示を最優先して反映してください：
 「${instruction}」
 --------------------------------------------------
-
+${notesSection}
 現在の件名: ${subject}
 現在の本文:
 ${body}

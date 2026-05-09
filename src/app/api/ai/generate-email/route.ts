@@ -16,9 +16,21 @@ import { generateEmail } from '@/lib/gemini'
 
 export async function POST(request: NextRequest) {
   const { contactId } = await request.json()
-  const contact = await prisma.contact.findUnique({ where: { id: contactId } })
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    include: { Note: { orderBy: { createdAt: 'desc' } } },
+  })
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const email = await generateEmail(contact.name, contact.company, contact.department, contact.title, contact.episodeMemo, contact.recommendedServices)
+  const email = await generateEmail(
+    contact.name,
+    contact.company,
+    contact.department,
+    contact.title,
+    contact.episodeMemo,
+    contact.recommendedServices,
+    undefined,
+    contact.Note,
+  )
   await prisma.contact.update({ where: { id: contactId }, data: { emailSubject: email.subject, emailBody: email.body, emailStatus: 'DRAFTED' } })
   return NextResponse.json(email)
 }

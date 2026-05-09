@@ -16,7 +16,12 @@ import { refineEmail } from '@/lib/gemini'
 
 export async function POST(request: NextRequest) {
   const { contactId, subject, body, instruction } = await request.json()
-  const email = await refineEmail(subject, body, instruction)
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    include: { Note: { orderBy: { createdAt: 'desc' } } },
+  })
+  const notes = contact?.Note ?? []
+  const email = await refineEmail(subject, body, instruction, notes)
   await prisma.contact.update({ where: { id: contactId }, data: { emailSubject: email.subject, emailBody: email.body } })
   return NextResponse.json(email)
 }
