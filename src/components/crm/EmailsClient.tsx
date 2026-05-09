@@ -107,15 +107,6 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
                       {isSending ? '送信中...' : 'Gmailで送信'}
                     </button>
                   )}
-                  {/* フォールバック: 緊急時用メーラー起動 */}
-                  {c.emailStatus === 'APPROVED' && c.email && (
-                    <a
-                      href={`mailto:${c.email}?subject=${encodeURIComponent(c.emailSubject || '')}&body=${encodeURIComponent(c.emailBody || '')}`}
-                      className="px-3 py-1 text-xs border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50"
-                    >
-                      メーラーで開く
-                    </a>
-                  )}
                 </div>
               </div>
             )

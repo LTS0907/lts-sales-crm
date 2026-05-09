@@ -891,11 +891,6 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                       {sendingGmail ? '送信中...' : 'Gmailで送信'}
                     </button>
                   )}
-                  {/* フォールバック: 緊急時用メーラー起動 */}
-                  {emailStatus === 'APPROVED' && contact.email && (
-                    <a href={`mailto:${contact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                      className="px-3 py-1.5 border border-orange-300 text-orange-600 text-xs rounded-lg hover:bg-orange-50">メーラーで開く</a>
-                  )}
                 </div>
               </div>
             ) : <p className="text-xs text-gray-400">「AIでメール生成」を押すと出会いのメモを元にメールを自動作成します</p>}
