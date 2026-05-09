@@ -46,6 +46,8 @@ function phaseBadgeClass(phase: string): string {
   return 'bg-gray-100 text-gray-600'
 }
 
+type BillingCycle = 'MONTHLY' | 'YEARLY'
+
 export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -55,6 +57,8 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
   const [showDropdown, setShowDropdown] = useState(false)
 
   const [serviceKey, setServiceKey] = useState(SUBSCRIPTION_SERVICES[0].key)
+  const [customServiceName, setCustomServiceName] = useState('')
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('MONTHLY')
   const [fixedAmount, setFixedAmount] = useState('')
   const [description, setDescription] = useState(SUBSCRIPTION_SERVICES[0].defaultDescription)
   const [invoiceSubject, setInvoiceSubject] = useState(SUBSCRIPTION_SERVICES[0].defaultSubject)
@@ -66,6 +70,7 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
 
   const selectedService = SUBSCRIPTION_SERVICES.find(s => s.key === serviceKey)!
   const isFixed = selectedService.defaultBillingType === 'FIXED'
+  const isCustom = selectedService.isCustom === true
 
   const filteredContacts = contacts.filter(c => {
     const q = search.toLowerCase()
@@ -77,15 +82,23 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
     const svc = SUBSCRIPTION_SERVICES.find(s => s.key === key)!
     setDescription(svc.defaultDescription)
     setInvoiceSubject(svc.defaultSubject)
+    if (!svc.isCustom) {
+      setCustomServiceName('')
+    }
   }
+
+  const amountLabel = billingCycle === 'YEARLY' ? '年額（税抜） *' : '月額（税抜） *'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedContact) { setError('顧客を選択してください'); return }
-    if (isFixed && !fixedAmount) { setError('月額を入力してください'); return }
+    if (isCustom && !customServiceName.trim()) { setError('サービス名を入力してください'); return }
+    if (isFixed && !fixedAmount) { setError(`${billingCycle === 'YEARLY' ? '年額' : '月額'}を入力してください`); return }
 
     setSaving(true)
     setError('')
+
+    const resolvedServiceName = isCustom ? customServiceName.trim() : selectedService.label
 
     try {
       const res = await fetch('/api/subscriptions', {
@@ -93,8 +106,9 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contactId: selectedContact.id,
-          serviceName: selectedService.label,
+          serviceName: resolvedServiceName,
           billingType: selectedService.defaultBillingType,
+          billingCycle,
           fixedAmount: isFixed ? parseInt(fixedAmount) : null,
           description,
           invoiceSubject,
@@ -179,7 +193,7 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
       {/* Service selector */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">サービス *</label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {SUBSCRIPTION_SERVICES.map(svc => (
             <button key={svc.key} type="button"
               onClick={() => handleServiceChange(svc.key)}
@@ -190,9 +204,43 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
               }`}>
               <p className="font-medium">{svc.label}</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                {svc.defaultBillingType === 'FIXED' ? '固定額' : '変動額'}
+                {svc.isCustom ? 'カスタム' : svc.defaultBillingType === 'FIXED' ? '固定額' : '変動額'}
               </p>
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom service name (shown only for "その他") */}
+      {isCustom && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">サービス名 *</label>
+          <input
+            type="text"
+            value={customServiceName}
+            onChange={e => setCustomServiceName(e.target.value)}
+            placeholder="例: 単発開発費用"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+        </div>
+      )}
+
+      {/* Billing cycle selector */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">支払いサイクル *</label>
+        <div className="flex gap-3">
+          {(['MONTHLY', 'YEARLY'] as BillingCycle[]).map(cycle => (
+            <label key={cycle} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="billingCycle"
+                value={cycle}
+                checked={billingCycle === cycle}
+                onChange={() => setBillingCycle(cycle)}
+                className="accent-blue-600"
+              />
+              <span className="text-sm text-gray-700">{cycle === 'MONTHLY' ? '月次' : '年次'}</span>
+            </label>
           ))}
         </div>
       </div>
@@ -200,14 +248,14 @@ export default function SubscriptionForm({ contacts }: { contacts: Contact[] }) 
       {/* Fixed amount */}
       {isFixed && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">月額（税抜） *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{amountLabel}</label>
           <div className="flex items-center gap-2">
             <span className="text-gray-500">¥</span>
             <input
               type="number"
               value={fixedAmount}
               onChange={e => setFixedAmount(e.target.value)}
-              placeholder="150000"
+              placeholder={billingCycle === 'YEARLY' ? '1800000' : '150000'}
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
           </div>

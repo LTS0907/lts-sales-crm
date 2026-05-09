@@ -216,6 +216,7 @@ model Subscription {
   contactId      String
   serviceName    String
   billingType    String          // "FIXED" or "VARIABLE"
+  billingCycle   String          @default("MONTHLY") // "MONTHLY" or "YEARLY"
   fixedAmount    Int?
   description    String
   invoiceSubject String
