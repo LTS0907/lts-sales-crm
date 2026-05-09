@@ -32,14 +32,59 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const body = await request.json()
-    const { fixedAmount, description, invoiceSubject, status, notes } = body
+    const {
+      serviceName,
+      billingType,
+      billingCycle,
+      fixedAmount,
+      description,
+      invoiceSubject,
+      startDate,
+      endDate,
+      status,
+      notes,
+    } = body
+
+    // enum バリデーション
+    if (billingType !== undefined && !['FIXED', 'VARIABLE'].includes(billingType)) {
+      return NextResponse.json({ error: 'Invalid billingType' }, { status: 400 })
+    }
+    if (billingCycle !== undefined && !['MONTHLY', 'YEARLY'].includes(billingCycle)) {
+      return NextResponse.json({ error: 'Invalid billingCycle' }, { status: 400 })
+    }
 
     const data: Record<string, unknown> = {}
-    if (fixedAmount !== undefined) data.fixedAmount = fixedAmount
+
+    if (serviceName !== undefined) data.serviceName = serviceName
     if (description !== undefined) data.description = description
     if (invoiceSubject !== undefined) data.invoiceSubject = invoiceSubject
     if (notes !== undefined) data.notes = notes
 
+    // billingType の変更: VARIABLE に変更した場合は fixedAmount を null にする
+    if (billingType !== undefined) {
+      data.billingType = billingType
+      if (billingType === 'VARIABLE') {
+        data.fixedAmount = null
+      }
+    }
+
+    if (billingCycle !== undefined) data.billingCycle = billingCycle
+
+    // fixedAmount: billingType が VARIABLE でない場合のみ受け付ける
+    if (fixedAmount !== undefined && billingType !== 'VARIABLE') {
+      data.fixedAmount = fixedAmount === null ? null : Number(fixedAmount)
+    }
+
+    // 日付の変更: JST midnight → UTC のズレを防ぐため +09:00 を付加
+    if (startDate !== undefined) {
+      data.startDate = new Date(startDate + 'T00:00:00+09:00')
+    }
+    // endDate は null（クリア）も明示的に処理する
+    if ('endDate' in body) {
+      data.endDate = endDate ? new Date(endDate + 'T00:00:00+09:00') : null
+    }
+
+    // status 変更（一時停止 / 解約 / 再開）— cancelledAt / endDate は status 変更時のみ
     if (status) {
       data.status = status
       if (status === 'CANCELLED') {
@@ -52,7 +97,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       where: { id },
       data,
       include: {
-        Contact: { select: { id: true, name: true, company: true } },
+        Contact: { select: { id: true, name: true, company: true, email: true } },
       },
     })
 
