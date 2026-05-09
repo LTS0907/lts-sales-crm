@@ -194,8 +194,8 @@ ${notesText}
 従業員様向け AI活用セミナー
 https://drive.google.com/file/d/1S-lzgoxzZMlqa8V3ItM5t-qmikbYQhO3/view?usp=sharing
 
-【オーダーメイド式】生成AIパーソナルトレーニング
-https://drive.google.com/file/d/1Ks9axZLMnc3lh16pG_BxDSDJbpuQCY-7/view?usp=sharing
+24時間365日電気代だけで働く【AI社員】
+https://drive.google.com/file/d/1t_qRDSzgOl31uK7p9cc_KfLFgRyMyC2t/view?usp=drive_link
 
 AX / DX内製化サポート
 https://drive.google.com/file/d/1DZ9FqNasdLh6uN2sGkpdc4No05F8-iKb/view?usp=drive_link
