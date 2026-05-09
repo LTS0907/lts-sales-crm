@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Link from 'next/link'
 
 // ステータス定義
@@ -30,6 +30,198 @@ interface ContactEmail {
   emailSubject?: string | null
   emailBody?: string | null
   episodeMemo?: string | null
+}
+
+// メールプレビューモーダル
+interface EmailPreviewModalProps {
+  contact: ContactEmail
+  onClose: () => void
+  onGenerate: (id: string) => Promise<void>
+  onApprove: (id: string) => Promise<void>
+  onSend: (id: string) => Promise<void>
+  isGenerating: boolean
+  isApproving: boolean
+  isSending: boolean
+}
+
+function EmailPreviewModal({
+  contact,
+  onClose,
+  onGenerate,
+  onApprove,
+  onSend,
+  isGenerating,
+  isApproving,
+  isSending,
+}: EmailPreviewModalProps) {
+  const isProcessing = isGenerating || isApproving || isSending
+  const statusDef = STATUS_MAP[contact.emailStatus] ?? STATUSES[0]
+
+  // ESCキーで閉じる
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  // body のスクロールを禁止
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  const handleAction = async (fn: (id: string) => Promise<void>) => {
+    await fn(contact.id)
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ animation: 'fadeIn 0.15s ease-out' }}
+    >
+      {/* オーバーレイ */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* モーダル本体 */}
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        style={{ animation: 'slideUp 0.15s ease-out' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="メール内容プレビュー"
+      >
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900">メール内容プレビュー</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 text-xl leading-none p-1 -mr-1 rounded hover:bg-gray-100 transition-colors"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* スクロール可能な本文エリア */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* 受信者情報 */}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 font-medium w-6">To:</span>
+              <span className="text-sm text-gray-900 font-medium">{contact.name} 様</span>
+              {contact.company && (
+                <span className="text-xs text-gray-500">({contact.company})</span>
+              )}
+              {contact.email && (
+                <span className="text-xs text-gray-400">&lt;{contact.email}&gt;</span>
+              )}
+              <span className={`ml-auto text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusDef.color}`}>
+                {statusDef.label}
+              </span>
+            </div>
+          </div>
+
+          {/* 件名 */}
+          {contact.emailSubject ? (
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">件名</p>
+              <p className="text-base font-semibold text-gray-900">{contact.emailSubject}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">件名未生成</p>
+          )}
+
+          {/* 本文 */}
+          {contact.emailBody ? (
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">本文</p>
+              <div className="border border-gray-100 rounded-xl px-4 py-3 bg-white">
+                <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  {contact.emailBody}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">本文未生成</p>
+          )}
+
+          {/* episodeMemo */}
+          {contact.episodeMemo && (
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">メモ・記録</p>
+              <p className="text-xs text-gray-500 whitespace-pre-wrap bg-yellow-50 rounded-lg px-3 py-2">
+                {contact.episodeMemo}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* フッター（アクションボタン） */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0 flex-wrap">
+          {contact.emailStatus === 'DRAFTED' && (
+            <>
+              <button
+                onClick={() => handleAction(onGenerate)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isGenerating ? '生成中...' : '✨ 再生成'}
+              </button>
+              <button
+                onClick={() => handleAction(onApprove)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isApproving ? '処理中...' : '✅ 送信許可'}
+              </button>
+            </>
+          )}
+          {contact.emailStatus === 'APPROVED' && (
+            <>
+              <button
+                onClick={() => handleAction(onGenerate)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isGenerating ? '生成中...' : '✨ 再生成'}
+              </button>
+              <button
+                onClick={() => handleAction(onSend)}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSending ? '送信中...' : '📧 Gmailで送信'}
+              </button>
+            </>
+          )}
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 // 処理中状態
@@ -64,6 +256,7 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
   const [memoSaving, setMemoSaving] = useState<Set<string>>(new Set())
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; type: string } | null>(null)
   const [bulkSummary, setBulkSummary] = useState<{ success: number; fail: number; type: string } | null>(null)
+  const [previewContactId, setPreviewContactId] = useState<string | null>(null)
   const memoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // フィルタ済みリスト
@@ -477,6 +670,24 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
         </div>
       )}
 
+      {/* メールプレビューモーダル */}
+      {previewContactId && (() => {
+        const previewContact = contacts.find(c => c.id === previewContactId)
+        if (!previewContact) return null
+        return (
+          <EmailPreviewModal
+            contact={previewContact}
+            onClose={() => setPreviewContactId(null)}
+            onGenerate={generateEmail}
+            onApprove={approve}
+            onSend={sendViaGmail}
+            isGenerating={processing.generating.has(previewContactId)}
+            isApproving={processing.approving.has(previewContactId)}
+            isSending={processing.sending.has(previewContactId)}
+          />
+        )
+      })()}
+
       {/* カードリスト */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
@@ -595,6 +806,16 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
                       >
                         詳細・編集
                       </Link>
+
+                      {/* 本文確認ボタン（DRAFTED/APPROVED/SENT） */}
+                      {c.emailStatus !== 'UNSENT' && (
+                        <button
+                          onClick={() => setPreviewContactId(c.id)}
+                          className="px-2.5 py-1 text-xs border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          ✉️ 本文を見る
+                        </button>
+                      )}
 
                       {c.emailStatus === 'UNSENT' && (
                         <button
