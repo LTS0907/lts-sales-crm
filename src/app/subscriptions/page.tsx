@@ -2,25 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-
-const statusLabels: Record<string, { label: string; color: string }> = {
-  ACTIVE: { label: '有効', color: 'bg-green-100 text-green-700' },
-  PAUSED: { label: '一時停止', color: 'bg-yellow-100 text-yellow-700' },
-  CANCELLED: { label: '解約済', color: 'bg-gray-100 text-gray-500' },
-}
-
-const billingTypeLabels: Record<string, { label: string; color: string }> = {
-  FIXED: { label: '固定額', color: 'bg-blue-100 text-blue-700' },
-  VARIABLE: { label: '変動額', color: 'bg-orange-100 text-orange-700' },
-}
-
-const billingCycleLabels: Record<string, { label: string; color: string }> = {
-  MONTHLY: { label: '月次', color: 'bg-gray-100 text-gray-600' },
-  YEARLY: { label: '年次', color: 'bg-purple-100 text-purple-700' },
-}
+import SubscriptionsListClient, {
+  type SubscriptionListItem,
+} from '@/components/subscriptions/SubscriptionsListClient'
 
 export default async function SubscriptionsPage() {
-  const subscriptions = await prisma.subscription.findMany({
+  const rawSubs = await prisma.subscription.findMany({
     include: {
       Contact: { select: { id: true, name: true, company: true, email: true } },
       BillingRecord: { orderBy: { billingMonth: 'desc' }, take: 1 },
@@ -28,13 +15,34 @@ export default async function SubscriptionsPage() {
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
   })
 
+  // Date 型をシリアライズして Client Component に渡せる形に変換
+  const subscriptions: SubscriptionListItem[] = rawSubs.map(sub => ({
+    id: sub.id,
+    serviceName: sub.serviceName,
+    billingType: sub.billingType,
+    billingCycle: (sub as Record<string, unknown>).billingCycle as string,
+    fixedAmount: sub.fixedAmount,
+    status: sub.status,
+    invoiceSubject: sub.invoiceSubject,
+    Contact: {
+      id: sub.Contact.id,
+      name: sub.Contact.name,
+      company: sub.Contact.company,
+      email: sub.Contact.email,
+    },
+    BillingRecord: sub.BillingRecord.map(br => ({
+      billingMonth: br.billingMonth,
+      status: br.status,
+    })),
+  }))
+
   const activeCount = subscriptions.filter(s => s.status === 'ACTIVE').length
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">🔄 サブスク管理</h1>
+          <h1 className="text-xl font-bold text-gray-900">サブスク管理</h1>
           <p className="text-sm text-gray-500 mt-1">アクティブ: {activeCount}件</p>
         </div>
         <div className="flex gap-2">
@@ -42,7 +50,7 @@ export default async function SubscriptionsPage() {
             href="/subscriptions/billing"
             className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
           >
-            📄 月次請求
+            月次請求
           </Link>
           <Link
             href="/subscriptions/new"
@@ -64,129 +72,7 @@ export default async function SubscriptionsPage() {
           </Link>
         </div>
       ) : (
-        <>
-          {/* PC: テーブル表示 */}
-          <div className="hidden lg:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">顧客</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">サービス</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">種別</th>
-                  <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">月額</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">ステータス</th>
-                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">直近請求</th>
-                  <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subscriptions.map(sub => {
-                  const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
-                  const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
-                  const bc = billingCycleLabels[(sub as Record<string, unknown>).billingCycle as string] || billingCycleLabels.MONTHLY
-                  const lastBilling = sub.BillingRecord[0]
-
-                  return (
-                    <tr key={sub.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <Link href={`/contacts/${sub.Contact.id}`} className="hover:underline">
-                          <p className="text-sm font-medium text-gray-900">{sub.Contact.name}</p>
-                          {sub.Contact.company && (
-                            <p className="text-xs text-gray-500">{sub.Contact.company}</p>
-                          )}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{sub.serviceName}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${bt.color}`}>
-                            {bt.label}
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${bc.color}`}>
-                            {bc.label}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
-                        {sub.billingType === 'FIXED' && sub.fixedAmount
-                          ? `¥${sub.fixedAmount.toLocaleString()}`
-                          : '—'
-                        }
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">
-                        {lastBilling ? `${lastBilling.billingMonth} (${lastBilling.status})` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/subscriptions/${sub.id}`}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          詳細
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* スマホ・iPad: カード表示 */}
-          <div className="lg:hidden space-y-3">
-            {subscriptions.map(sub => {
-              const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
-              const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
-              const bc = billingCycleLabels[(sub as Record<string, unknown>).billingCycle as string] || billingCycleLabels.MONTHLY
-              const lastBilling = sub.BillingRecord[0]
-
-              return (
-                <div key={sub.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <Link href={`/contacts/${sub.Contact.id}`} className="flex-1 min-w-0 hover:underline">
-                      <p className="text-sm font-medium text-gray-900 truncate">{sub.Contact.name}</p>
-                      {sub.Contact.company && (
-                        <p className="text-xs text-gray-500 truncate">{sub.Contact.company}</p>
-                      )}
-                    </Link>
-                    <Link
-                      href={`/subscriptions/${sub.id}`}
-                      className="flex-shrink-0 text-xs text-blue-600 hover:underline"
-                    >
-                      詳細 →
-                    </Link>
-                  </div>
-                  <p className="text-sm text-gray-700 mb-2">{sub.serviceName}</p>
-                  <div className="flex items-center gap-2 flex-wrap mb-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>
-                      {st.label}
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
-                      {bt.label}
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bc.color}`}>
-                      {bc.label}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-gray-900">
-                      {sub.billingType === 'FIXED' && sub.fixedAmount
-                        ? `¥${sub.fixedAmount.toLocaleString()}/月`
-                        : '変動額'}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {lastBilling ? `直近: ${lastBilling.billingMonth}` : '請求実績なし'}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
+        <SubscriptionsListClient subscriptions={subscriptions} />
       )}
     </div>
   )
