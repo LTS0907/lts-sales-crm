@@ -94,14 +94,39 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDone, setIsDone] = useState(false)
 
-  // VARIABLE は除外
+  // 全サブスクを FIXED / VARIABLE に分類
   const fixedSubs = useMemo(
     () => selectedSubs.filter(s => s.billingType === 'FIXED'),
     [selectedSubs]
   )
-  const variableCount = selectedSubs.length - fixedSubs.length
+  const variableSubs = useMemo(
+    () => selectedSubs.filter(s => s.billingType === 'VARIABLE'),
+    [selectedSubs]
+  )
+
+  // 金額入力状態: subscriptionId → 金額文字列
+  // FIXED は初期値として fixedAmount を設定、VARIABLE は空
+  const [amounts, setAmounts] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {}
+    for (const sub of selectedSubs) {
+      init[sub.id] = sub.billingType === 'FIXED' && sub.fixedAmount != null
+        ? String(sub.fixedAmount)
+        : ''
+    }
+    return init
+  })
 
   const selectedMonthLabel = monthOptions.find(o => o.value === issueMonth)?.label ?? issueMonth
+
+  // VARIABLE で未入力（空または0以下）の件数
+  const variableUnfilledCount = variableSubs.filter(sub => {
+    const v = amounts[sub.id] ?? ''
+    const n = parseInt(v, 10)
+    return v === '' || isNaN(n) || n <= 0
+  }).length
+
+  // 発行可能かどうか
+  const canIssue = selectedSubs.length > 0 && variableUnfilledCount === 0
 
   // ESCで閉じる
   useEffect(() => {
@@ -119,23 +144,23 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
   }, [])
 
   async function handleBulkIssue() {
-    if (fixedSubs.length === 0) return
+    if (!canIssue) return
 
-    if (!confirm(`${selectedMonthLabel}分の請求書を${fixedSubs.length}件発行します。よろしいですか？`)) return
+    if (!confirm(`${selectedMonthLabel}分の請求書を${selectedSubs.length}件発行します。よろしいですか？`)) return
 
-    // 初期状態セット
-    const initialResults: BulkItemResult[] = fixedSubs.map(sub => ({
+    // 初期状態セット（全サブスク）
+    const initialResults: BulkItemResult[] = selectedSubs.map(sub => ({
       subscriptionId: sub.id,
       contactName: sub.Contact.name,
       serviceName: sub.serviceName,
-      amount: sub.fixedAmount ?? 0,
+      amount: parseInt(amounts[sub.id] ?? '0', 10) || 0,
       status: 'pending',
     }))
     setResults(initialResults)
     setIsProcessing(true)
 
     // 3並列処理
-    const queue = [...fixedSubs]
+    const queue = [...selectedSubs]
     const updateResult = (id: string, patch: Partial<BulkItemResult>) => {
       setResults(prev =>
         prev.map(r => (r.subscriptionId === id ? { ...r, ...patch } : r))
@@ -149,13 +174,15 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
 
         updateResult(sub.id, { status: 'processing' })
 
+        const amount = parseInt(amounts[sub.id] ?? '0', 10) || 0
+
         try {
           const res = await fetch(
             `/api/subscriptions/${sub.id}/billing/generate`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ month: issueMonth, amount: sub.fixedAmount }),
+              body: JSON.stringify({ month: issueMonth, amount }),
             }
           )
           const data = await res.json()
@@ -216,7 +243,14 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">一括請求書発行</h2>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">一括請求書発行</h2>
+            {variableSubs.length > 0 && variableUnfilledCount > 0 && !isDone && results.length === 0 && (
+              <p className="text-xs text-orange-600 mt-0.5">
+                未入力: {variableUnfilledCount}件（VARIABLE）
+              </p>
+            )}
+          </div>
           {!isProcessing && (
             <button
               onClick={handleClose}
@@ -233,11 +267,6 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
           {/* 選択件数サマリ */}
           <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm">
             <p className="font-medium text-gray-900">選択中: {selectedSubs.length}件のサブスク</p>
-            {variableCount > 0 && (
-              <p className="text-orange-600 text-xs mt-1">
-                ⚠️ VARIABLEサブスクは個別金額入力が必要なため一括発行から除外されます（{variableCount}件除外）
-              </p>
-            )}
           </div>
 
           {/* 対象月（処理前のみ） */}
@@ -262,32 +291,92 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
           {!isDone && results.length === 0 && (
             <div>
               <p className="text-xs text-gray-500 mb-2">発行対象一覧:</p>
-              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
-                {selectedSubs.map(sub => {
-                  const isVariable = sub.billingType === 'VARIABLE'
-                  return (
-                    <div
-                      key={sub.id}
-                      className={`px-3 py-2 text-sm flex items-center justify-between gap-2 ${isVariable ? 'opacity-50' : ''}`}
-                    >
-                      <div className="min-w-0">
-                        <span className="font-medium text-gray-900 truncate">
-                          {isVariable ? '⚠️' : '✅'} {sub.Contact.name}
-                        </span>
-                        <span className="text-gray-500 ml-1 text-xs truncate">
-                          - {sub.serviceName}
-                          {isVariable && ' (VARIABLE・除外)'}
-                        </span>
-                      </div>
-                      {!isVariable && sub.fixedAmount != null && (
-                        <span className="text-gray-700 font-medium flex-shrink-0">
-                          ¥{sub.fixedAmount.toLocaleString()}
-                        </span>
-                      )}
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                {/* FIXED グループ */}
+                {fixedSubs.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 bg-gray-50 text-xs text-gray-500 font-medium">
+                      FIXED（金額自動・編集可）
                     </div>
-                  )
-                })}
+                    {fixedSubs.map(sub => (
+                      <div
+                        key={sub.id}
+                        className="px-3 py-2 text-sm flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium text-gray-900 truncate">
+                            ✅ {sub.Contact.name}
+                          </span>
+                          <span className="text-gray-500 ml-1 text-xs truncate">
+                            - {sub.serviceName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-gray-500 text-sm">¥</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={amounts[sub.id] ?? ''}
+                            onChange={e => setAmounts(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                            className="w-28 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {/* VARIABLE グループ */}
+                {variableSubs.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 bg-orange-50 text-xs text-orange-700 font-medium">
+                      VARIABLE（金額入力必須）
+                    </div>
+                    {variableSubs.map(sub => {
+                      const val = amounts[sub.id] ?? ''
+                      const n = parseInt(val, 10)
+                      const isEmpty = val === ''
+                      const isInvalid = !isEmpty && (isNaN(n) || n <= 0)
+                      return (
+                        <div
+                          key={sub.id}
+                          className="px-3 py-2 text-sm flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-medium text-gray-900 truncate">
+                              ⚠️ {sub.Contact.name}
+                            </span>
+                            <span className="text-gray-500 ml-1 text-xs truncate">
+                              - {sub.serviceName}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className="text-gray-500 text-sm">¥</span>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="未入力"
+                              value={val}
+                              onChange={e => setAmounts(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                              className={`w-28 border rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 ${
+                                isEmpty
+                                  ? 'border-orange-400 bg-orange-50 focus:ring-orange-300'
+                                  : isInvalid
+                                  ? 'border-red-400 bg-red-50 focus:ring-red-300'
+                                  : 'border-green-400 focus:ring-green-300'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
+              {variableSubs.length > 0 && variableUnfilledCount > 0 && (
+                <p className="text-xs text-orange-600 mt-1.5">
+                  ※ すべての金額を入力すると発行可能になります
+                </p>
+              )}
             </div>
           )}
 
@@ -381,10 +470,10 @@ function BulkIssueModal({ selectedSubs, onClose, onComplete }: BulkIssueModalPro
               </button>
               <button
                 onClick={handleBulkIssue}
-                disabled={fixedSubs.length === 0}
+                disabled={!canIssue}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                一括発行 ({fixedSubs.length}件)
+                一括発行 ({selectedSubs.length}件)
               </button>
             </>
           )}
