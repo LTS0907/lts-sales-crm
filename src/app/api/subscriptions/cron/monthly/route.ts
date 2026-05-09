@@ -39,6 +39,19 @@ export async function POST(request: Request) {
     let accessToken: string | null = null
 
     for (const sub of subscriptions) {
+      // Yearly subscriptions: only bill on anniversary months
+      // e.g. startDate=2026-05-01, billingCycle=YEARLY → bill in 2026-05, 2027-05, 2028-05, ...
+      if (sub.billingCycle === 'YEARLY') {
+        const startMonth = `${sub.startDate.getFullYear()}-${String(sub.startDate.getMonth() + 1).padStart(2, '0')}`
+        const [startY, startM] = startMonth.split('-').map(Number)
+        const monthsSinceStart = (year - startY) * 12 + (monthNum - startM)
+        // Only generate if monthsSinceStart is a non-negative multiple of 12
+        if (monthsSinceStart < 0 || monthsSinceStart % 12 !== 0) {
+          skipped++
+          continue
+        }
+      }
+
       // Idempotency: skip if record already exists
       const existing = await prisma.billingRecord.findUnique({
         where: { subscriptionId_billingMonth: { subscriptionId: sub.id, billingMonth } },

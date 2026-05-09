@@ -14,6 +14,11 @@ const billingTypeLabels: Record<string, { label: string; color: string }> = {
   VARIABLE: { label: '変動額', color: 'bg-orange-100 text-orange-700' },
 }
 
+const billingCycleLabels: Record<string, { label: string; color: string }> = {
+  MONTHLY: { label: '月次', color: 'bg-gray-100 text-gray-600' },
+  YEARLY: { label: '年次', color: 'bg-purple-100 text-purple-700' },
+}
+
 export default async function SubscriptionsPage() {
   const subscriptions = await prisma.subscription.findMany({
     include: {
@@ -78,6 +83,7 @@ export default async function SubscriptionsPage() {
                 {subscriptions.map(sub => {
                   const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
                   const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
+                  const bc = billingCycleLabels[(sub as Record<string, unknown>).billingCycle as string] || billingCycleLabels.MONTHLY
                   const lastBilling = sub.BillingRecord[0]
 
                   return (
@@ -92,9 +98,14 @@ export default async function SubscriptionsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{sub.serviceName}</td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
-                          {bt.label}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${bt.color}`}>
+                            {bt.label}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${bc.color}`}>
+                            {bc.label}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
                         {sub.billingType === 'FIXED' && sub.fixedAmount
@@ -130,6 +141,7 @@ export default async function SubscriptionsPage() {
             {subscriptions.map(sub => {
               const st = statusLabels[sub.status] || { label: sub.status, color: 'bg-gray-100' }
               const bt = billingTypeLabels[sub.billingType] || { label: sub.billingType, color: 'bg-gray-100' }
+              const bc = billingCycleLabels[(sub as Record<string, unknown>).billingCycle as string] || billingCycleLabels.MONTHLY
               const lastBilling = sub.BillingRecord[0]
 
               return (
@@ -155,6 +167,9 @@ export default async function SubscriptionsPage() {
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bt.color}`}>
                       {bt.label}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${bc.color}`}>
+                      {bc.label}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">

@@ -4,6 +4,7 @@ export interface SubscriptionServiceDef {
   defaultBillingType: 'FIXED' | 'VARIABLE'
   defaultDescription: string
   defaultSubject: string
+  isCustom?: boolean
 }
 
 export const SUBSCRIPTION_SERVICES: SubscriptionServiceDef[] = [
@@ -20,6 +21,14 @@ export const SUBSCRIPTION_SERVICES: SubscriptionServiceDef[] = [
     defaultBillingType: 'VARIABLE',
     defaultDescription: '広告運用手数料',
     defaultSubject: '広告運用手数料 ご請求',
+  },
+  {
+    key: 'other',
+    label: 'その他',
+    defaultBillingType: 'FIXED',
+    defaultDescription: '',
+    defaultSubject: '',
+    isCustom: true,
   },
 ]
 

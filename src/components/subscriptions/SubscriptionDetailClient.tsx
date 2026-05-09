@@ -23,6 +23,7 @@ interface Subscription {
   contactId: string
   serviceName: string
   billingType: string
+  billingCycle: string
   fixedAmount: number | null
   description: string
   invoiceSubject: string
@@ -104,9 +105,14 @@ export default function SubscriptionDetailClient({ subscription: initialSub }: {
           <div>
             <p className="text-xs text-gray-500">種別</p>
             <p className="text-sm font-medium">{sub.billingType === 'FIXED' ? '固定額' : '変動額'}</p>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${
+              sub.billingCycle === 'YEARLY' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {sub.billingCycle === 'YEARLY' ? '年次' : '月次'}
+            </span>
           </div>
           <div>
-            <p className="text-xs text-gray-500">月額</p>
+            <p className="text-xs text-gray-500">{sub.billingCycle === 'YEARLY' ? '年額' : '月額'}</p>
             {sub.billingType === 'FIXED' ? (
               editing ? (
                 <div className="flex items-center gap-1">

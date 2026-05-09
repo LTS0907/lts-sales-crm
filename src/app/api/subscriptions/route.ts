@@ -33,7 +33,14 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { contactId, serviceName, billingType, fixedAmount, description, invoiceSubject, startDate, notes } = body
+    const { contactId, serviceName, billingType, billingCycle, fixedAmount, description, invoiceSubject, startDate, notes } = body
+
+    // Validate billingCycle
+    if (billingCycle && !['MONTHLY', 'YEARLY'].includes(billingCycle)) {
+      return NextResponse.json({ error: 'billingCycle は MONTHLY または YEARLY のみ有効です' }, { status: 400 })
+    }
+
+    const resolvedBillingCycle = billingCycle || 'MONTHLY'
 
     // Check for existing active subscription for same contact+service
     const existing = await prisma.subscription.findFirst({
@@ -51,6 +58,7 @@ export async function POST(request: Request) {
         contactId,
         serviceName,
         billingType,
+        billingCycle: resolvedBillingCycle,
         fixedAmount: billingType === 'FIXED' ? fixedAmount : null,
         description,
         invoiceSubject,
