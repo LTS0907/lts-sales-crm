@@ -108,6 +108,7 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
   const [emailBody, setEmailBody] = useState(contact.emailBody || '')
   const [refineInstruction, setRefineInstruction] = useState('')
   const [loadingEmail, setLoadingEmail] = useState(false)
+  const [sendingGmail, setSendingGmail] = useState(false)
   const [loadingAI, setLoadingAI] = useState(false)
   const [aiSummary, setAiSummary] = useState(contact.contactSummary)
   const [companySummary, setCompanySummary] = useState(contact.companySummary)
@@ -187,9 +188,32 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
     setEmailStatus('APPROVED')
   }
 
-  const markSent = async () => {
-    await fetch(`/api/contacts/${contact.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailStatus: 'SENT', emailSentAt: new Date().toISOString() }) })
+  const sendViaGmail = async () => {
+    setSendingGmail(true)
+    // 楽観的UI更新
+    const prevStatus = emailStatus
     setEmailStatus('SENT')
+
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/send-email`, { method: 'POST' })
+      const data = await res.json()
+
+      if (!res.ok) {
+        // 失敗時はロールバック
+        setEmailStatus(prevStatus)
+        if (res.status === 403 && data.code === 'INSUFFICIENT_SCOPE') {
+          alert('Gmail送信権限がありません。サインアウトして再ログインしてください。')
+        } else {
+          alert(`送信に失敗しました: ${data.error || '不明なエラー'}`)
+        }
+      }
+    } catch (err) {
+      // 通信エラー時もロールバック
+      setEmailStatus(prevStatus)
+      alert(`通信エラーが発生しました: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSendingGmail(false)
+    }
   }
 
   const changeEmailStatus = async (newStatus: string) => {
@@ -858,10 +882,19 @@ export default function ContactDetailClient({ contact, allContacts }: { contact:
                 <div className="flex gap-2 pt-1">
                   <button onClick={saveEmail} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50">保存</button>
                   {emailStatus === 'DRAFTED' && <button onClick={approveEmail} className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">送信許可</button>}
-                  {emailStatus === 'APPROVED' && <button onClick={markSent} className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">送信済みにする</button>}
+                  {emailStatus === 'APPROVED' && (
+                    <button
+                      onClick={sendViaGmail}
+                      disabled={sendingGmail}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {sendingGmail ? '送信中...' : 'Gmailで送信'}
+                    </button>
+                  )}
+                  {/* フォールバック: 緊急時用メーラー起動 */}
                   {emailStatus === 'APPROVED' && contact.email && (
                     <a href={`mailto:${contact.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                      className="px-3 py-1.5 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600">メーラーで開く</a>
+                      className="px-3 py-1.5 border border-orange-300 text-orange-600 text-xs rounded-lg hover:bg-orange-50">メーラーで開く</a>
                   )}
                 </div>
               </div>
