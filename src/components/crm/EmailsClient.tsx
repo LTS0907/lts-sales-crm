@@ -39,6 +39,7 @@ interface EmailPreviewModalProps {
   onGenerate: (id: string) => Promise<void>
   onApprove: (id: string) => Promise<void>
   onSend: (id: string) => Promise<void>
+  onSave: (id: string, subject: string, body: string) => Promise<void>
   isGenerating: boolean
   isApproving: boolean
   isSending: boolean
@@ -50,21 +51,40 @@ function EmailPreviewModal({
   onGenerate,
   onApprove,
   onSend,
+  onSave,
   isGenerating,
   isApproving,
   isSending,
 }: EmailPreviewModalProps) {
-  const isProcessing = isGenerating || isApproving || isSending
+  const [editSubject, setEditSubject] = useState(contact.emailSubject ?? '')
+  const [editBody, setEditBody] = useState(contact.emailBody ?? '')
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const isDirty =
+    editSubject !== (contact.emailSubject ?? '') ||
+    editBody !== (contact.emailBody ?? '')
+
+  const isProcessing = isGenerating || isApproving || isSending || isSaving
+
   const statusDef = STATUS_MAP[contact.emailStatus] ?? STATUSES[0]
 
-  // ESCキーで閉じる
+  // contact が変わったら編集 state を初期化
+  useEffect(() => {
+    setEditSubject(contact.emailSubject ?? '')
+    setEditBody(contact.emailBody ?? '')
+    setSaveError(null)
+  }, [contact.id, contact.emailSubject, contact.emailBody])
+
+  // ESCキーで閉じる（未保存の場合は確認）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') handleClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty])
 
   // body のスクロールを禁止
   useEffect(() => {
@@ -72,8 +92,36 @@ function EmailPreviewModal({
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  const handleAction = async (fn: (id: string) => Promise<void>) => {
+  const handleClose = () => {
+    if (isDirty && !confirm('変更が保存されていません。閉じますか？')) return
+    onClose()
+  }
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(contact.id, editSubject, editBody)
+    } catch (err) {
+      setSaveError(`保存失敗: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // 未保存なら先に自動保存してからアクションを実行
+  const handleActionWithAutoSave = async (fn: (id: string) => Promise<void>) => {
+    if (isDirty) {
+      await handleSave()
+      if (saveError) return
+    }
     await fn(contact.id)
+    onClose()
+  }
+
+  const handleGenerate = async () => {
+    if (isDirty && !confirm('現在の編集内容は破棄されます。再生成しますか？')) return
+    await onGenerate(contact.id)
     onClose()
   }
 
@@ -85,7 +133,7 @@ function EmailPreviewModal({
       {/* オーバーレイ */}
       <div
         className="absolute inset-0 bg-black/50"
-        onClick={onClose}
+        onClick={handleClose}
         aria-hidden="true"
       />
 
@@ -95,13 +143,20 @@ function EmailPreviewModal({
         style={{ animation: 'slideUp 0.15s ease-out' }}
         role="dialog"
         aria-modal="true"
-        aria-label="メール内容プレビュー"
+        aria-label="メール内容プレビュー・編集"
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">メール内容プレビュー</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-gray-900">メール内容の編集</h2>
+            {isDirty && (
+              <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                未保存
+              </span>
+            )}
+          </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-700 text-xl leading-none p-1 -mr-1 rounded hover:bg-gray-100 transition-colors"
             aria-label="閉じる"
           >
@@ -128,28 +183,46 @@ function EmailPreviewModal({
             </div>
           </div>
 
-          {/* 件名 */}
-          {contact.emailSubject ? (
-            <div>
-              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">件名</p>
-              <p className="text-base font-semibold text-gray-900">{contact.emailSubject}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 italic">件名未生成</p>
-          )}
+          {/* 件名（編集可能） */}
+          <div>
+            <label className="block text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">
+              件名
+            </label>
+            <input
+              type="text"
+              value={editSubject}
+              onChange={e => setEditSubject(e.target.value)}
+              placeholder="件名を入力"
+              className="w-full text-base font-semibold text-gray-900 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent placeholder-gray-300 transition-shadow"
+            />
+          </div>
 
-          {/* 本文 */}
-          {contact.emailBody ? (
-            <div>
-              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">本文</p>
-              <div className="border border-gray-100 rounded-xl px-4 py-3 bg-white">
-                <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                  {contact.emailBody}
-                </p>
-              </div>
+          {/* 本文（編集可能） */}
+          <div>
+            <label className="block text-xs text-gray-400 font-medium mb-1 uppercase tracking-wide">
+              本文
+            </label>
+            <textarea
+              value={editBody}
+              onChange={e => setEditBody(e.target.value)}
+              placeholder="本文を入力"
+              rows={12}
+              className="w-full text-sm text-gray-800 border border-gray-200 rounded-xl px-3 py-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent leading-relaxed placeholder-gray-300 transition-shadow"
+            />
+          </div>
+
+          {/* 保存エラー */}
+          {saveError && (
+            <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 flex items-start gap-1">
+              <span className="flex-shrink-0">⚠</span>
+              <span>{saveError}</span>
+              <button
+                onClick={() => setSaveError(null)}
+                className="ml-auto text-red-400 hover:text-red-600"
+              >
+                ✕
+              </button>
             </div>
-          ) : (
-            <p className="text-sm text-gray-400 italic">本文未生成</p>
           )}
 
           {/* episodeMemo */}
@@ -165,17 +238,26 @@ function EmailPreviewModal({
 
         {/* フッター（アクションボタン） */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0 flex-wrap">
+          {/* 保存ボタン（isDirty の時のみ active） */}
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+            className="px-3 py-1.5 text-sm border border-emerald-400 text-emerald-700 rounded-lg hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSaving ? '保存中...' : '💾 保存'}
+          </button>
+
           {contact.emailStatus === 'DRAFTED' && (
             <>
               <button
-                onClick={() => handleAction(onGenerate)}
+                onClick={handleGenerate}
                 disabled={isProcessing}
                 className="px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {isGenerating ? '生成中...' : '✨ 再生成'}
               </button>
               <button
-                onClick={() => handleAction(onApprove)}
+                onClick={() => handleActionWithAutoSave(onApprove)}
                 disabled={isProcessing}
                 className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
@@ -186,14 +268,14 @@ function EmailPreviewModal({
           {contact.emailStatus === 'APPROVED' && (
             <>
               <button
-                onClick={() => handleAction(onGenerate)}
+                onClick={handleGenerate}
                 disabled={isProcessing}
                 className="px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {isGenerating ? '生成中...' : '✨ 再生成'}
               </button>
               <button
-                onClick={() => handleAction(onSend)}
+                onClick={() => handleActionWithAutoSave(onSend)}
                 disabled={isProcessing}
                 className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
@@ -202,7 +284,7 @@ function EmailPreviewModal({
             </>
           )}
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-3 py-1.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
           >
             閉じる
@@ -295,6 +377,20 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
       return { ...prev, [type]: s }
     })
   }
+
+  // --- メール件名・本文 手動保存 ---
+  const saveEmailContent = useCallback(async (id: string, subject: string, body: string) => {
+    const res = await fetch(`/api/contacts/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailSubject: subject, emailBody: body }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error ?? `HTTP ${res.status}`)
+    }
+    updateContact(id, { emailSubject: subject, emailBody: body })
+  }, [updateContact])
 
   // --- episodeMemo 自動保存 ---
   const handleMemoChange = (id: string, value: string) => {
@@ -681,6 +777,7 @@ export default function EmailsClient({ contacts: initial }: { contacts: ContactE
             onGenerate={generateEmail}
             onApprove={approve}
             onSend={sendViaGmail}
+            onSave={saveEmailContent}
             isGenerating={processing.generating.has(previewContactId)}
             isApproving={processing.approving.has(previewContactId)}
             isSending={processing.sending.has(previewContactId)}
