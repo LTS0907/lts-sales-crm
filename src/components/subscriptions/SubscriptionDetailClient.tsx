@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -73,6 +73,19 @@ function EditIcon() {
   )
 }
 
+// 対象月の選択肢を生成（今月を中心に前後数ヶ月）
+function buildMonthOptions(): { value: string; label: string }[] {
+  const now = new Date()
+  const options: { value: string; label: string }[] = []
+  for (let offset = -2; offset <= 2; offset++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = `${d.getFullYear()}年${d.getMonth() + 1}月`
+    options.push({ value, label })
+  }
+  return options
+}
+
 export default function SubscriptionDetailClient({ subscription: initialSub }: { subscription: Subscription }) {
   const router = useRouter()
   const [sub, setSub] = useState(initialSub)
@@ -82,6 +95,20 @@ export default function SubscriptionDetailClient({ subscription: initialSub }: {
   const [draftValue, setDraftValue] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  // 請求書発行フォームの状態
+  const monthOptions = useMemo(() => buildMonthOptions(), [])
+  const defaultMonth = monthOptions.find((_, i) => i === 2)?.value ?? monthOptions[0]?.value ?? ''
+  const [issueMonth, setIssueMonth] = useState(defaultMonth)
+  const [issueAmount, setIssueAmount] = useState<string>(
+    sub.billingType === 'FIXED' ? String(sub.fixedAmount ?? '') : ''
+  )
+  const [issuing, setIssuing] = useState(false)
+  const [issueResult, setIssueResult] = useState<{
+    spreadsheetUrl: string
+    accountsReceivableId: string
+  } | null>(null)
+  const [issueError, setIssueError] = useState<string | null>(null)
 
   // フィールドの編集開始
   function startEdit(field: string, currentValue: string) {
@@ -186,6 +213,52 @@ export default function SubscriptionDetailClient({ subscription: initialSub }: {
         BillingRecord: prev.BillingRecord,
       }))
       router.refresh()
+    }
+  }
+
+  // 請求書発行処理
+  async function handleIssueInvoice() {
+    const monthLabel = monthOptions.find(o => o.value === issueMonth)?.label ?? issueMonth
+    const amount = parseInt(issueAmount, 10)
+
+    if (sub.billingType === 'VARIABLE' && (!issueAmount || isNaN(amount))) {
+      setIssueError('変動額サブスクは金額の入力が必須です')
+      return
+    }
+
+    if (!confirm(`${monthLabel}分の請求書を発行し、売掛金として登録します。よろしいですか？`)) return
+
+    setIssuing(true)
+    setIssueError(null)
+    setIssueResult(null)
+
+    try {
+      const body: Record<string, unknown> = { month: issueMonth }
+      if (sub.billingType === 'VARIABLE') body.amount = amount
+      // FIXED でも金額が手入力されていれば上書き
+      if (sub.billingType === 'FIXED' && issueAmount && !isNaN(amount)) body.amount = amount
+
+      const res = await fetch(`/api/subscriptions/${sub.id}/billing/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setIssueError(data.error || '発行に失敗しました')
+        return
+      }
+
+      setIssueResult({
+        spreadsheetUrl: data.spreadsheetUrl,
+        accountsReceivableId: data.accountsReceivableId,
+      })
+
+      // 請求履歴を再フェッチするためページを更新
+      router.refresh()
+    } finally {
+      setIssuing(false)
     }
   }
 
@@ -567,6 +640,111 @@ export default function SubscriptionDetailClient({ subscription: initialSub }: {
         )}
       </div>
 
+      {/* 請求書発行 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-sm font-bold text-gray-900 mb-4">請求書を発行する</h2>
+
+        {issueResult ? (
+          <div className="space-y-3">
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 font-medium">
+              請求書発行完了！
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <a
+                href={issueResult.spreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              >
+                請求書を開く
+              </a>
+              <Link
+                href="/accounts-receivable"
+                className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:underline"
+              >
+                売掛金一覧で確認
+              </Link>
+            </div>
+            <button
+              onClick={() => { setIssueResult(null); setIssueError(null) }}
+              className="text-xs text-gray-400 hover:underline"
+            >
+              別の月を発行する
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+              {/* 対象月 */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">対象月</label>
+                <select
+                  value={issueMonth}
+                  onChange={e => setIssueMonth(e.target.value)}
+                  disabled={issuing}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
+                >
+                  {monthOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 金額 */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  金額（税抜）
+                  {sub.billingType === 'VARIABLE' && (
+                    <span className="text-red-500 ml-1">必須</span>
+                  )}
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={issueAmount}
+                    onChange={e => setIssueAmount(e.target.value)}
+                    disabled={issuing}
+                    min="0"
+                    placeholder={sub.billingType === 'VARIABLE' ? '金額を入力' : String(sub.fixedAmount ?? 0)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
+                  />
+                  <span className="text-sm text-gray-500 whitespace-nowrap">円</span>
+                </div>
+              </div>
+            </div>
+
+            {issueError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {issueError}
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <button
+                onClick={handleIssueInvoice}
+                disabled={issuing}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {issuing ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    発行中...
+                  </>
+                ) : (
+                  '請求書を発行する'
+                )}
+              </button>
+              <p className="text-xs text-gray-400">
+                発行と同時にDriveに請求書が作成され、売掛金にも自動登録されます
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 請求履歴 */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
@@ -594,17 +772,17 @@ export default function SubscriptionDetailClient({ subscription: initialSub }: {
                   </td>
                   <td className="px-4 py-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${billingStatusColors[br.status] || 'bg-gray-100'}`}>
-                      {br.status}
+                      {br.status === 'PENDING' ? '未発行' : br.status === 'GENERATED' ? '発行済' : br.status === 'SENT' ? '送信済' : br.status}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-500">
                     {br.sentAt ? `${new Date(br.sentAt).toLocaleDateString('ja-JP')} (${br.sentMethod})` : '—'}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {br.spreadsheetUrl && (
+                    {br.spreadsheetUrl ? (
                       <a href={br.spreadsheetUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline">開く</a>
-                    )}
+                        className="text-xs text-blue-600 hover:underline">請求書を開く</a>
+                    ) : '—'}
                   </td>
                 </tr>
               ))}
